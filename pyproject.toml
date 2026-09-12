@@ -1,0 +1,37 @@
+[project]
+name = "schedule-management-system"
+version = "0.1.0"
+description = "Python 图形化日程管理系统课程项目"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "mypy>=1.15",
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "ruff>=0.9",
+]
+
+[tool.uv]
+# 当前阶段只初始化环境和项目规范，业务包尚未实现。
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src"]
+exclude = [".uv-cache", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
