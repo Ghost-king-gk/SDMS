@@ -14,9 +14,19 @@ dev = [
     "ruff>=0.9",
 ]
 
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [tool.uv]
-# 当前阶段只初始化环境和项目规范，业务包尚未实现。
-package = false
+# 首个业务包已加入 src/schedule_management/，因此项目改为可安装的 src 布局。
+# 这样测试、类型检查和运行入口都能直接 import 本项目包，无需临时 PYTHONPATH。
+package = true
+
+[tool.hatch.build.targets.wheel]
+# 发布名是 schedule-management-system，导入名是 schedule_management，
+# 两者不同，因此必须显式声明打包路径，不能依赖自动推断。
+packages = ["src/schedule_management"]
 
 [tool.ruff]
 line-length = 100
