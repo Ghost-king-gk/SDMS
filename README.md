@@ -198,13 +198,16 @@ uv run mypy src
 
 当实现可安装的应用包后，再根据最终入口补充打包/构建命令；当前骨架不包含可运行入口。
 
-下面三套命令在 Windows 和 Linux 上完全相同，不区分平台，也不需要先激活虚拟环境：
+下面四套命令在 Windows 和 Linux 上完全相同，不区分平台，也不需要先激活虚拟环境：
 
 ```text
 uv run python -m compileall src
 uv run ruff check .
+uv run ruff format --check .
 uv run mypy src
 ```
+
+其中 `ruff format --check` 只检查格式是否符合统一风格，不会修改文件；需要自动修复时去掉 `--check` 再执行。
 
 ## 运行
 
@@ -231,9 +234,22 @@ uv run pytest
 uv run pytest --cov=src --cov-report=term-missing
 ```
 
-测试命令在两个平台上完全一致。业务实现后，测试至少应覆盖：新增、按日期查询、修改、删除、删除确认、空/非法输入、未选中记录和异常提示。GUI 测试结果与截图归档到 `docs/screenshots/`，并记录操作系统与 Python/Tk 版本、前置数据、操作步骤、预期结果和实际结果。
+测试命令在两个平台上完全一致。当前 `tests/` 已包含环境门禁测试 `tests/test_environment.py`，它验证的是运行环境而不是业务功能：
 
-注意：在 `tests/` 还没有用例时，pytest 会显示 `collected 0 items`。这是“没有测试”，不是“测试通过”，不能作为验收证据。
+| 测试 | 验证内容 |
+| --- | --- |
+| `test_python_version_meets_requirement` | Python 版本满足 `requires-python >= 3.12` |
+| `test_running_inside_virtual_environment` | 测试确实运行在虚拟环境内，而不是系统 Python |
+| `test_required_stdlib_module_importable` | `tkinter`、`sqlite3`、`datetime`、`calendar` 能被真正导入 |
+| `test_sqlite3_can_open_in_memory_database` | 能打开内存 SQLite 库并执行一次查询 |
+
+环境门禁测试的作用：在三人各自的 Windows / Linux 机器上，先把“环境不对”和“代码不对”区分开。环境缺少 Tkinter 时，失败信息会直接指出解释器路径，而不是让程序在打开窗口时抛出难以理解的异常。
+
+业务测试（新增、按日期查询、修改、删除、删除确认、空/非法输入、未选中记录和异常提示）尚未编写，由各模块作者按模块补充。约定位置为 `tests/unit/`、`tests/contract/`、`tests/integration/`。GUI 测试结果与截图归档到 `docs/screenshots/`，并记录操作系统与 Python/Tk 版本、前置数据、操作步骤、预期结果和实际结果。
+
+判断真实性的原则：如果某次运行显示 `collected 0 items`，那是“没有测试”而不是“测试通过”；测试通过必须有明确的 `N passed` 和退出码 0。
+
+关于中文标点：`pyproject.toml` 中的 `allowed-confusables` 显式放行了常见中文全角标点，因为本项目的注释、文档字符串和用户提示都使用中文。修改这部分配置前请先确认原因，不要为了让某次检查通过而放宽规则。
 
 ## 结果记录
 
@@ -254,16 +270,17 @@ git status --short --branch
 | 操作系统 | `cat /etc/os-release` | Ubuntu 26.04 LTS |
 | uv 版本 | `uv --version` | 0.12.13（`~/.local/bin/uv`） |
 | Python 版本 | `uv run python --version` | Python 3.12.14 |
-| 依赖同步 | `uv sync --dev --locked` | 安装 14 个包，锁文件无需变更 |
+| 依赖同步 | `uv sync --dev --locked` | 14 个包，锁文件无需变更 |
 | 锁文件一致性 | `uv lock --check` | 通过 |
 | 代码规范 | `uv run ruff check .` | `All checks passed!` |
-| 字节码编译 | `uv run python -m compileall -q src` | 通过 |
+| 代码格式 | `uv run ruff format --check .` | `16 files already formatted` |
+| 字节码编译 | `uv run python -m compileall -q src tests` | 通过 |
 | Tkinter 可用性 | `uv run python -c "import tkinter; print(tkinter.TkVersion)"` | 成功，Tk 9.0 |
 | 窗口创建 | `tkinter.Tk()` 后 `destroy()` | 成功（`DISPLAY=:0`） |
+| 自动化测试 | `uv run pytest -q` | `7 passed`，退出码 0（环境门禁测试） |
 | 类型检查 | `uv run mypy src` | `src` 下暂无 `.py` 文件，**不算通过** |
-| 自动化测试 | `uv run pytest` | `collected 0 items`，**不算通过** |
 
-表中最后两行必须如实呈现：当前仓库还没有业务代码和测试用例，因此类型检查和测试都处于“空集”状态。等第一个模块和第一个测试落地后再更新本表。
+类型检查一行仍是空集，必须如实说明：`src/` 目录下目前只有说明文档，还没有任何 `.py` 文件，因此 `uv run mypy src` 只能报告“没有可检查的文件”。这不代表类型检查通过，也不代表类型配置有问题——等第一个业务模块（`src/schedule_management/`）落地后，本行才会有真实结果。
 
 Windows 环境结果待拥有 Windows 设备的成员按“Windows 开发环境”步骤执行后补充，请勿照抄上面的数据。
 
