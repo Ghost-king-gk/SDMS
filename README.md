@@ -32,7 +32,7 @@
 ├── uv.lock                   # uv 依赖锁定文件
 ├── .python-version           # Python 3.12
 ├── src/
-│   ├── schedule_management/  # 待实现的应用包
+│   ├── schedule_management/  # 应用包（已可安装，业务模块待实现）
 │   └── lib/                  # 课程要求的第三方包随源代码提交位置
 ├── tests/                    # 自动化测试
 └── docs/
@@ -46,25 +46,180 @@
 
 需要安装：
 
-- Python 3.12 或更高版本；
-- uv；
-- Git。
+- Python 3.12 或更高版本：由 uv 负责下载和管理，通常不需要手动安装 Python；
+- uv：负责虚拟环境、依赖解析和锁文件；
+- Git：版本管理。
 
-推荐使用 uv 在项目根目录初始化并同步环境：
+Windows 和 Linux 共用同一套 uv 工作流。差异只在安装 uv、虚拟环境路径、激活命令、终端编码、图形显示和截图工具；Python 版本、`uv.lock`、`uv run` 命令、静态检查与测试命令、代码和目录结构在两个平台上完全一致。
+
+不要向全局 Python 安装本项目依赖。系统 Python 通常受 PEP 668 保护，全局安装既会失败也会污染其他项目。
+
+### Windows 开发环境
+
+以下命令在 PowerShell 中执行。本轮没有 Windows 机器可以验证，因此本节状态为**待成员验证**；第一次执行后请把实际版本号和结果补到本节。
+
+1. 安装 uv（两种方式任选一种）：
+
+```powershell
+# 方式一：官方脚本
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# 方式二：winget
+winget install --id=astral-sh.uv -e
+```
+
+装完重开一个 PowerShell，确认：
+
+```powershell
+uv --version
+```
+
+如果提示找不到 uv，检查 `%USERPROFILE%\.local\bin` 是否在 PATH 中。
+
+2. 在仓库根目录创建虚拟环境并同步依赖：
 
 ```powershell
 uv venv --python 3.12
-uv sync --dev
+uv sync --dev --locked
 uv run python --version
 ```
 
-如需显式激活环境（PowerShell）：
+`--locked` 表示严格按 `uv.lock` 安装，锁文件不一致会直接报错。这是团队复现环境的一致做法。
+
+3. 如需显式激活环境（多数情况下不需要）：
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
 ```
 
-本项目的依赖声明以 `pyproject.toml` 为准，精确解析结果以 `uv.lock` 为准。GUI 框架尚未选定，因此当前没有运行时第三方 GUI 依赖；实现阶段应在设计文档中记录 Tkinter 或 PyQt 的选择及其依赖处理方式。
+若被执行策略拦住，只对当前会话放开即可，不要改全局策略：
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+4. 终端中文与编码：PowerShell 7 默认 UTF-8；旧版 Windows PowerShell 5.1 打印中文可能乱码，先执行：
+
+```powershell
+chcp 65001
+$env:PYTHONUTF8 = "1"
+```
+
+5. 图形界面必须运行在桌面会话中，纯 SSH 或无桌面环境无法显示窗口。
+
+6. 截图使用 Win + Shift + S，另存到 `docs/screenshots/`。
+
+Windows 注意事项：
+
+- 换行符已由 `.gitattributes` 约定：普通文本入库为 LF，`*.bat` 和 `*.ps1` 为 CRLF。保持 Git 默认配置即可，不要手工设置 `core.autocrlf`；如果出现整文件换行差异，先看 `git diff --stat` 再判断，不要盲目提交。
+- 文件名大小写不敏感：Windows 认为 `Schedule.py` 和 `schedule.py` 是同一个文件，Linux 认为不同。导入名必须与文件名大小写完全一致，否则会出现“本机通过、别人失败”。
+- 路径拼接统一使用 `pathlib.Path`，不要在代码里手写反斜杠字符串。
+
+### Linux 开发环境
+
+以下步骤已在 Ubuntu 26.04 上完整验证，结果见“结果记录”。
+
+1. 安装 uv：
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+默认安装到 `~/.local/bin`。如果希望安装脚本不修改 shell 配置文件，可以跳过：
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | env INSTALLER_NO_MODIFY_PATH=1 sh
+```
+
+2. 创建虚拟环境并同步依赖（与 Windows 完全相同的三条命令）：
+
+```bash
+uv venv --python 3.12
+uv sync --dev --locked
+uv run python --version
+```
+
+3. 如需显式激活环境（多数情况下不需要）：
+
+```bash
+source .venv/bin/activate
+```
+
+日常建议直接用 `uv run <命令>`，它会自动使用 `.venv`，不必先激活；这样也不会误用系统 Python。
+
+4. Tkinter 不需要额外安装系统包。uv 下载的 CPython 自带 Tcl/Tk，本机实测 `import tkinter` 成功，Tk 版本 9.0。只有改用系统 Python（而非 uv 环境）时，才需要安装发行版包，例如 Debian/Ubuntu 的 `python3-tk`。
+
+5. 图形界面需要 X11 或 Wayland 会话，检查显示环境：
+
+```bash
+echo "$DISPLAY $WAYLAND_DISPLAY"
+```
+
+本机结果：`DISPLAY=:0`、`WAYLAND_DISPLAY=wayland-0`，窗口可以正常创建。在服务器、容器或无 X 转发的环境下无法显示窗口，此时不要把“GUI 起不来”当成业务代码错误。
+
+6. 截图可用 `gnome-screenshot`、Wayland 下的 `grim` 或 ImageMagick 的 `import`，保存到 `docs/screenshots/`。
+
+### 两个平台的差异对照
+
+| 项目 | Windows | Linux |
+| --- | --- | --- |
+| 安装 uv | 官方 irm 脚本或 winget | 官方 curl 脚本 |
+| uv 安装位置 | `%USERPROFILE%\.local\bin` | `~/.local/bin` |
+| 虚拟环境解释器 | `.venv\Scripts\python.exe` | `.venv/bin/python` |
+| 激活命令 | `.\.venv\Scripts\Activate.ps1` | `source .venv/bin/activate` |
+| 终端编码 | 旧版 PowerShell 需 `chcp 65001` | 通常已是 UTF-8 |
+| 图形显示 | 桌面会话 | 需要 `DISPLAY` 或 `WAYLAND_DISPLAY` |
+| 截图工具 | Win + Shift + S | gnome-screenshot / grim / import |
+
+结论：平台差异只影响“怎么装、怎么激活、怎么截图”，不影响“怎么写代码、怎么测试”。任何人都不应把只适用于自己系统的变体写进 README 的通用命令。
+
+### 常见环境问题
+
+| 现象 | 处理方向 |
+| --- | --- |
+| `uv: command not found` | 确认安装目录在 PATH，并重开终端 |
+| 命令用了系统 Python | 统一改用 `uv run <命令>`；确认 `uv run python` 打印的是 `.venv` 内路径 |
+| `import tkinter` 失败 | 确认在 uv 环境中；若确实用系统 Python 则安装 `python3-tk` |
+| GUI 窗口打不开 | 检查显示环境；无桌面时改用自动化测试或由有桌面的成员截图 |
+| 依赖安装失败 | 检查网络与 pypi 可达性，不要用全局 pip 绕过 |
+| `uv.lock` 合并冲突 | 不要手改 `uv.lock`，交给 uv 重新解析并评审差异 |
+
+本项目的依赖声明以 `pyproject.toml` 为准，精确解析结果以 `uv.lock` 为准。GUI 框架尚未在团队层面正式选定，计划中的推荐方案是 Tkinter/ttk（标准库，无第三方运行时依赖），本机已验证可用；最终选型及理由应记录在设计文档中。
+
+### 项目包与可安装布局
+
+`pyproject.toml` 中 `[tool.uv] package = true`，并声明了 `[build-system]`，因此本项目自身就是一个可安装包，而不只是一堆源码文件。
+
+这解决了一个具体问题：在 src 布局下，Python 导入时只看 `sys.path`，不会自动去搜索 `src/` 目录。如果不把项目安装成包，`tests/` 中的代码就无法 `import schedule_management`，只能靠临时设置 `PYTHONPATH` 掩盖；而环境变量与个人机器绑定，无法进仓库、无法复现，也不符合 `AGENTS.md` 的要求。
+
+`uv sync` 会以 editable（开发模式）安装本项目，效果是：
+
+- `import schedule_management` 在任何工作目录下都可用；
+- 源码没有被复制，导入的仍是仓库内的 `src/schedule_management/`，改代码立即生效，不需要重装；
+- `uv.lock` 中该项目的条目为 `source = { editable = "." }`，可据此确认是 editable 而不是普通安装。
+
+验证方式：
+
+```text
+uv run python -c "import schedule_management as m; print(m.__file__)"
+```
+
+输出应以 `src/schedule_management/__init__.py` 结尾。
+
+两点说明：
+
+- 构建依赖 hatchling 不会出现在 `uv.lock` 里，uv 在隔离的构建环境中获取它，因此锁文件本身没有新增第三方包条目；
+- 发布名与导入名不同：发布名是 `schedule-management-system`（`[project].name`），导入名是 `schedule_management`。因此 `[tool.hatch.build.targets.wheel]` 必须显式声明 `packages`，不能依赖自动推断。
+
+构建可分发文件（用于提交或转交他人）：
+
+```text
+uv build
+```
+
+生成 `dist/` 下的 `.whl` 与 `.tar.gz`。`dist/` 已在 `.gitignore` 中，不会提交。
+
+应用入口（例如 `uv run python -m schedule_management`）需要 `src/schedule_management/__main__.py`，当前尚未创建。
 
 ## 编译与静态检查
 
@@ -76,38 +231,100 @@ uv run ruff check .
 uv run mypy src
 ```
 
-当实现可安装的应用包后，再根据最终入口补充打包/构建命令；当前骨架不包含可运行入口。
+本项目已是可安装包，因此可以构建分发文件：`uv build` 会生成 `dist/` 下的 `.whl` 与 `.tar.gz`。图形界面入口尚未创建，等 `__main__.py` 落地后再补充启动命令；不要用占位入口冒充完成。
+
+下面四套命令在 Windows 和 Linux 上完全相同，不区分平台，也不需要先激活虚拟环境：
+
+```text
+uv run python -m compileall src
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy src
+```
+
+其中 `ruff format --check` 只检查格式是否符合统一风格，不会修改文件；需要自动修复时去掉 `--check` 再执行。
 
 ## 运行
 
-业务入口将在实现阶段确定，并同步更新本节。建议统一使用 uv 执行，避免调用错误的全局 Python：
+业务入口将在实现阶段确定，并同步更新本节。统一使用 uv 执行，避免调用错误的全局 Python：
 
-```powershell
+```text
 uv run <项目启动命令>
 ```
 
-当前阶段没有可运行的日程管理模块，不能以占位命令宣称系统已完成。
+平台相关提醒：
+
+- 两个平台都使用同一个启动命令，不要为 Windows 单独写一套入口。
+- Windows 上如果用窗口方式启动，可用 `pythonw` 避免弹出控制台窗口；调试阶段仍建议保留控制台以便看到日志。
+- Linux 上启动 GUI 前确认显示环境可用（见“环境配置”中的检查命令）。
+
+当前 `schedule_management` 包已经可以导入，但图形界面和 `__main__.py` 都还不存在，因此没有可运行的启动命令，也不能以占位入口宣称系统已完成。
 
 ## 测试
 
 测试框架已配置为 pytest，测试目录为 `tests/`：
 
-```powershell
+```text
 uv run pytest
 uv run pytest --cov=src --cov-report=term-missing
 ```
 
-业务实现后，测试至少应覆盖：新增、按日期查询、修改、删除、删除确认、空/非法输入、未选中记录和异常提示。GUI 测试结果与截图归档到 `docs/screenshots/`。
+测试命令在两个平台上完全一致。当前 `tests/` 已包含环境门禁测试 `tests/test_environment.py`，共 9 个用例，验证的是运行环境和打包配置，而不是业务功能：
+
+| 测试 | 验证内容 |
+| --- | --- |
+| `test_python_version_meets_requirement` | Python 版本满足 `requires-python >= 3.12` |
+| `test_running_inside_virtual_environment` | 测试确实运行在虚拟环境内，而不是系统 Python |
+| `test_required_stdlib_module_importable` | `tkinter`、`sqlite3`、`datetime`、`calendar` 能被真正导入 |
+| `test_sqlite3_can_open_in_memory_database` | 能打开内存 SQLite 库并执行一次查询 |
+| `test_project_package_is_importable` | 项目包可导入，且 editable 指向仓库 `src/` 目录 |
+| `test_installed_version_matches_package_version` | 分发版本与包内 `__version__` 一致，防止两处漂移 |
+
+环境门禁测试的作用：在三人各自的 Windows / Linux 机器上，先把“环境或打包配置不对”和“业务代码不对”区分开。例如缺少 Tkinter 时，失败信息会直接指出解释器路径；`pyproject.toml` 的 src 布局被改坏时，会失败在导入测试而不是业务测试。路径断言使用 `pathlib` 的层级判断而不是字符串拼接，因此 Windows 的反斜杠也能正确通过。
+
+业务测试（新增、按日期查询、修改、删除、删除确认、空/非法输入、未选中记录和异常提示）尚未编写，由各模块作者按模块补充。约定位置为 `tests/unit/`、`tests/contract/`、`tests/integration/`。GUI 测试结果与截图归档到 `docs/screenshots/`，并记录操作系统与 Python/Tk 版本、前置数据、操作步骤、预期结果和实际结果。
+
+判断真实性的原则：如果某次运行显示 `collected 0 items`，那是“没有测试”而不是“测试通过”；测试通过必须有明确的 `N passed` 和退出码 0。
+
+关于中文标点：`pyproject.toml` 中的 `allowed-confusables` 显式放行了常见中文全角标点，因为本项目的注释、文档字符串和用户提示都使用中文。修改这部分配置前请先确认原因，不要为了让某次检查通过而放宽规则。
 
 ## 结果记录
 
-初始化完成后，使用以下命令记录环境和仓库状态：
+环境状态使用以下命令记录，两个平台一致：
 
-```powershell
+```text
 uv run python --version
 uv lock --check
 git status --short --branch
 ```
+
+### 已验证的环境结果
+
+下表是 Linux 开发环境下实际执行得到的输出，作为团队复现的参照基线：
+
+| 检查项 | 命令 | 实际结果 |
+| --- | --- | --- |
+| 操作系统 | `cat /etc/os-release` | Ubuntu 26.04 LTS |
+| uv 版本 | `uv --version` | 0.12.13（`~/.local/bin/uv`） |
+| Python 版本 | `uv run python --version` | Python 3.12.14 |
+| 依赖同步 | `uv sync --dev --locked` | 14 个包，锁文件无需变更 |
+| 锁文件一致性 | `uv lock --check` | 通过 |
+| 代码规范 | `uv run ruff check .` | `All checks passed!` |
+| 代码格式 | `uv run ruff format --check .` | `17 files already formatted` |
+| 字节码编译 | `uv run python -m compileall -q src tests` | 通过 |
+| 项目包导入 | `uv run python -c "import schedule_management as m; print(m.__file__)"` | 成功，指向 `src/schedule_management/__init__.py` |
+| 构建分发文件 | `uv build` | 生成 `.whl` 与 `.tar.gz` |
+| Tkinter 可用性 | `uv run python -c "import tkinter; print(tkinter.TkVersion)"` | 成功，Tk 9.0 |
+| 窗口创建 | `tkinter.Tk()` 后 `destroy()` | 成功（`DISPLAY=:0`） |
+| 自动化测试 | `uv run pytest -q` | `9 passed`，退出码 0 |
+| 类型检查 | `uv run mypy src` | `Success: no issues found in 1 source file` |
+
+关于这些结果，有两点必须如实说明，不能因为表里全是绿色就当成“功能已完成”：
+
+- 类型检查虽然已经真实运行，但目前只检查了 `schedule_management/__init__.py` 这一个文件，里面只有包说明和版本号。它证明的是“门禁通路已经打通”，还不能证明业务代码的类型正确性；深度取决于后续模块。
+- 自动化测试的 9 个用例全部属于环境与打包门禁，没有任何业务行为断言。日程的新增、查询、修改、删除仍未被测试覆盖。
+
+Windows 环境结果待拥有 Windows 设备的成员按“Windows 开发环境”步骤执行后补充，请勿照抄上面的数据。
 
 业务完成后的结果应补充功能清单、测试数量与通过情况、已知限制和运行截图；不要把“工程骨架已建立”写成“功能已实现”。
 
