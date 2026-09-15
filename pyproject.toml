@@ -26,6 +26,10 @@ exclude = [".uv-cache", ".venv"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
+# 本仓库的代码注释、文档字符串和面向用户的提示都使用中文，全角标点是有意书写。
+# RUF001/RUF002/RUF003 默认把这些字符视为易混字符，因此显式放行常见中文标点；
+# 规则本身保持启用，其他语言的易混字符（例如西里尔字母冒充拉丁字母）仍会被拦截。
+allowed-confusables = ["，", "。", "、", "：", "；", "！", "？", "（", "）", "“", "”"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
