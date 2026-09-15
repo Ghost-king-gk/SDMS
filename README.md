@@ -32,7 +32,7 @@
 ├── uv.lock                   # uv 依赖锁定文件
 ├── .python-version           # Python 3.12
 ├── src/
-│   ├── schedule_management/  # 待实现的应用包
+│   ├── schedule_management/  # 应用包（已可安装，业务模块待实现）
 │   └── lib/                  # 课程要求的第三方包随源代码提交位置
 ├── tests/                    # 自动化测试
 └── docs/
@@ -184,7 +184,42 @@ echo "$DISPLAY $WAYLAND_DISPLAY"
 | 依赖安装失败 | 检查网络与 pypi 可达性，不要用全局 pip 绕过 |
 | `uv.lock` 合并冲突 | 不要手改 `uv.lock`，交给 uv 重新解析并评审差异 |
 
-本项目的依赖声明以 `pyproject.toml` 为准，精确解析结果以 `uv.lock` 为准。GUI 框架尚未选定，因此当前没有运行时第三方 GUI 依赖；实现阶段应在设计文档中记录 Tkinter 或 PyQt 的选择及其依赖处理方式。
+本项目的依赖声明以 `pyproject.toml` 为准，精确解析结果以 `uv.lock` 为准。GUI 框架尚未在团队层面正式选定，计划中的推荐方案是 Tkinter/ttk（标准库，无第三方运行时依赖），本机已验证可用；最终选型及理由应记录在设计文档中。
+
+### 项目包与可安装布局
+
+`pyproject.toml` 中 `[tool.uv] package = true`，并声明了 `[build-system]`，因此本项目自身就是一个可安装包，而不只是一堆源码文件。
+
+这解决了一个具体问题：在 src 布局下，Python 导入时只看 `sys.path`，不会自动去搜索 `src/` 目录。如果不把项目安装成包，`tests/` 中的代码就无法 `import schedule_management`，只能靠临时设置 `PYTHONPATH` 掩盖；而环境变量与个人机器绑定，无法进仓库、无法复现，也不符合 `AGENTS.md` 的要求。
+
+`uv sync` 会以 editable（开发模式）安装本项目，效果是：
+
+- `import schedule_management` 在任何工作目录下都可用；
+- 源码没有被复制，导入的仍是仓库内的 `src/schedule_management/`，改代码立即生效，不需要重装；
+- `uv.lock` 中该项目的条目为 `source = { editable = "." }`，可据此确认是 editable 而不是普通安装。
+
+验证方式：
+
+```text
+uv run python -c "import schedule_management as m; print(m.__file__)"
+```
+
+输出应以 `src/schedule_management/__init__.py` 结尾。
+
+两点说明：
+
+- 构建依赖 hatchling 不会出现在 `uv.lock` 里，uv 在隔离的构建环境中获取它，因此锁文件本身没有新增第三方包条目；
+- 发布名与导入名不同：发布名是 `schedule-management-system`（`[project].name`），导入名是 `schedule_management`。因此 `[tool.hatch.build.targets.wheel]` 必须显式声明 `packages`，不能依赖自动推断。
+
+构建可分发文件（用于提交或转交他人）：
+
+```text
+uv build
+```
+
+生成 `dist/` 下的 `.whl` 与 `.tar.gz`。`dist/` 已在 `.gitignore` 中，不会提交。
+
+应用入口（例如 `uv run python -m schedule_management`）需要 `src/schedule_management/__main__.py`，当前尚未创建。
 
 ## 编译与静态检查
 
@@ -196,7 +231,7 @@ uv run ruff check .
 uv run mypy src
 ```
 
-当实现可安装的应用包后，再根据最终入口补充打包/构建命令；当前骨架不包含可运行入口。
+本项目已是可安装包，因此可以构建分发文件：`uv build` 会生成 `dist/` 下的 `.whl` 与 `.tar.gz`。图形界面入口尚未创建，等 `__main__.py` 落地后再补充启动命令；不要用占位入口冒充完成。
 
 下面四套命令在 Windows 和 Linux 上完全相同，不区分平台，也不需要先激活虚拟环境：
 
@@ -223,7 +258,7 @@ uv run <项目启动命令>
 - Windows 上如果用窗口方式启动，可用 `pythonw` 避免弹出控制台窗口；调试阶段仍建议保留控制台以便看到日志。
 - Linux 上启动 GUI 前确认显示环境可用（见“环境配置”中的检查命令）。
 
-当前阶段没有可运行的日程管理模块，不能以占位命令宣称系统已完成。
+当前 `schedule_management` 包已经可以导入，但图形界面和 `__main__.py` 都还不存在，因此没有可运行的启动命令，也不能以占位入口宣称系统已完成。
 
 ## 测试
 
@@ -234,7 +269,7 @@ uv run pytest
 uv run pytest --cov=src --cov-report=term-missing
 ```
 
-测试命令在两个平台上完全一致。当前 `tests/` 已包含环境门禁测试 `tests/test_environment.py`，它验证的是运行环境而不是业务功能：
+测试命令在两个平台上完全一致。当前 `tests/` 已包含环境门禁测试 `tests/test_environment.py`，共 9 个用例，验证的是运行环境和打包配置，而不是业务功能：
 
 | 测试 | 验证内容 |
 | --- | --- |
@@ -242,8 +277,10 @@ uv run pytest --cov=src --cov-report=term-missing
 | `test_running_inside_virtual_environment` | 测试确实运行在虚拟环境内，而不是系统 Python |
 | `test_required_stdlib_module_importable` | `tkinter`、`sqlite3`、`datetime`、`calendar` 能被真正导入 |
 | `test_sqlite3_can_open_in_memory_database` | 能打开内存 SQLite 库并执行一次查询 |
+| `test_project_package_is_importable` | 项目包可导入，且 editable 指向仓库 `src/` 目录 |
+| `test_installed_version_matches_package_version` | 分发版本与包内 `__version__` 一致，防止两处漂移 |
 
-环境门禁测试的作用：在三人各自的 Windows / Linux 机器上，先把“环境不对”和“代码不对”区分开。环境缺少 Tkinter 时，失败信息会直接指出解释器路径，而不是让程序在打开窗口时抛出难以理解的异常。
+环境门禁测试的作用：在三人各自的 Windows / Linux 机器上，先把“环境或打包配置不对”和“业务代码不对”区分开。例如缺少 Tkinter 时，失败信息会直接指出解释器路径；`pyproject.toml` 的 src 布局被改坏时，会失败在导入测试而不是业务测试。路径断言使用 `pathlib` 的层级判断而不是字符串拼接，因此 Windows 的反斜杠也能正确通过。
 
 业务测试（新增、按日期查询、修改、删除、删除确认、空/非法输入、未选中记录和异常提示）尚未编写，由各模块作者按模块补充。约定位置为 `tests/unit/`、`tests/contract/`、`tests/integration/`。GUI 测试结果与截图归档到 `docs/screenshots/`，并记录操作系统与 Python/Tk 版本、前置数据、操作步骤、预期结果和实际结果。
 
@@ -273,14 +310,19 @@ git status --short --branch
 | 依赖同步 | `uv sync --dev --locked` | 14 个包，锁文件无需变更 |
 | 锁文件一致性 | `uv lock --check` | 通过 |
 | 代码规范 | `uv run ruff check .` | `All checks passed!` |
-| 代码格式 | `uv run ruff format --check .` | `16 files already formatted` |
+| 代码格式 | `uv run ruff format --check .` | `17 files already formatted` |
 | 字节码编译 | `uv run python -m compileall -q src tests` | 通过 |
+| 项目包导入 | `uv run python -c "import schedule_management as m; print(m.__file__)"` | 成功，指向 `src/schedule_management/__init__.py` |
+| 构建分发文件 | `uv build` | 生成 `.whl` 与 `.tar.gz` |
 | Tkinter 可用性 | `uv run python -c "import tkinter; print(tkinter.TkVersion)"` | 成功，Tk 9.0 |
 | 窗口创建 | `tkinter.Tk()` 后 `destroy()` | 成功（`DISPLAY=:0`） |
-| 自动化测试 | `uv run pytest -q` | `7 passed`，退出码 0（环境门禁测试） |
-| 类型检查 | `uv run mypy src` | `src` 下暂无 `.py` 文件，**不算通过** |
+| 自动化测试 | `uv run pytest -q` | `9 passed`，退出码 0 |
+| 类型检查 | `uv run mypy src` | `Success: no issues found in 1 source file` |
 
-类型检查一行仍是空集，必须如实说明：`src/` 目录下目前只有说明文档，还没有任何 `.py` 文件，因此 `uv run mypy src` 只能报告“没有可检查的文件”。这不代表类型检查通过，也不代表类型配置有问题——等第一个业务模块（`src/schedule_management/`）落地后，本行才会有真实结果。
+关于这些结果，有两点必须如实说明，不能因为表里全是绿色就当成“功能已完成”：
+
+- 类型检查虽然已经真实运行，但目前只检查了 `schedule_management/__init__.py` 这一个文件，里面只有包说明和版本号。它证明的是“门禁通路已经打通”，还不能证明业务代码的类型正确性；深度取决于后续模块。
+- 自动化测试的 9 个用例全部属于环境与打包门禁，没有任何业务行为断言。日程的新增、查询、修改、删除仍未被测试覆盖。
 
 Windows 环境结果待拥有 Windows 设备的成员按“Windows 开发环境”步骤执行后补充，请勿照抄上面的数据。
 
