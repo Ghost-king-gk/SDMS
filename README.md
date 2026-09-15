@@ -46,23 +46,143 @@
 
 需要安装：
 
-- Python 3.12 或更高版本；
-- uv；
-- Git。
+- Python 3.12 或更高版本：由 uv 负责下载和管理，通常不需要手动安装 Python；
+- uv：负责虚拟环境、依赖解析和锁文件；
+- Git：版本管理。
 
-推荐使用 uv 在项目根目录初始化并同步环境：
+Windows 和 Linux 共用同一套 uv 工作流。差异只在安装 uv、虚拟环境路径、激活命令、终端编码、图形显示和截图工具；Python 版本、`uv.lock`、`uv run` 命令、静态检查与测试命令、代码和目录结构在两个平台上完全一致。
+
+不要向全局 Python 安装本项目依赖。系统 Python 通常受 PEP 668 保护，全局安装既会失败也会污染其他项目。
+
+### Windows 开发环境
+
+以下命令在 PowerShell 中执行。本轮没有 Windows 机器可以验证，因此本节状态为**待成员验证**；第一次执行后请把实际版本号和结果补到本节。
+
+1. 安装 uv（两种方式任选一种）：
+
+```powershell
+# 方式一：官方脚本
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# 方式二：winget
+winget install --id=astral-sh.uv -e
+```
+
+装完重开一个 PowerShell，确认：
+
+```powershell
+uv --version
+```
+
+如果提示找不到 uv，检查 `%USERPROFILE%\.local\bin` 是否在 PATH 中。
+
+2. 在仓库根目录创建虚拟环境并同步依赖：
 
 ```powershell
 uv venv --python 3.12
-uv sync --dev
+uv sync --dev --locked
 uv run python --version
 ```
 
-如需显式激活环境（PowerShell）：
+`--locked` 表示严格按 `uv.lock` 安装，锁文件不一致会直接报错。这是团队复现环境的一致做法。
+
+3. 如需显式激活环境（多数情况下不需要）：
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
 ```
+
+若被执行策略拦住，只对当前会话放开即可，不要改全局策略：
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+4. 终端中文与编码：PowerShell 7 默认 UTF-8；旧版 Windows PowerShell 5.1 打印中文可能乱码，先执行：
+
+```powershell
+chcp 65001
+$env:PYTHONUTF8 = "1"
+```
+
+5. 图形界面必须运行在桌面会话中，纯 SSH 或无桌面环境无法显示窗口。
+
+6. 截图使用 Win + Shift + S，另存到 `docs/screenshots/`。
+
+Windows 注意事项：
+
+- 换行符已由 `.gitattributes` 约定：普通文本入库为 LF，`*.bat` 和 `*.ps1` 为 CRLF。保持 Git 默认配置即可，不要手工设置 `core.autocrlf`；如果出现整文件换行差异，先看 `git diff --stat` 再判断，不要盲目提交。
+- 文件名大小写不敏感：Windows 认为 `Schedule.py` 和 `schedule.py` 是同一个文件，Linux 认为不同。导入名必须与文件名大小写完全一致，否则会出现“本机通过、别人失败”。
+- 路径拼接统一使用 `pathlib.Path`，不要在代码里手写反斜杠字符串。
+
+### Linux 开发环境
+
+以下步骤已在 Ubuntu 26.04 上完整验证，结果见“结果记录”。
+
+1. 安装 uv：
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+默认安装到 `~/.local/bin`。如果希望安装脚本不修改 shell 配置文件，可以跳过：
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | env INSTALLER_NO_MODIFY_PATH=1 sh
+```
+
+2. 创建虚拟环境并同步依赖（与 Windows 完全相同的三条命令）：
+
+```bash
+uv venv --python 3.12
+uv sync --dev --locked
+uv run python --version
+```
+
+3. 如需显式激活环境（多数情况下不需要）：
+
+```bash
+source .venv/bin/activate
+```
+
+日常建议直接用 `uv run <命令>`，它会自动使用 `.venv`，不必先激活；这样也不会误用系统 Python。
+
+4. Tkinter 不需要额外安装系统包。uv 下载的 CPython 自带 Tcl/Tk，本机实测 `import tkinter` 成功，Tk 版本 9.0。只有改用系统 Python（而非 uv 环境）时，才需要安装发行版包，例如 Debian/Ubuntu 的 `python3-tk`。
+
+5. 图形界面需要 X11 或 Wayland 会话，检查显示环境：
+
+```bash
+echo "$DISPLAY $WAYLAND_DISPLAY"
+```
+
+本机结果：`DISPLAY=:0`、`WAYLAND_DISPLAY=wayland-0`，窗口可以正常创建。在服务器、容器或无 X 转发的环境下无法显示窗口，此时不要把“GUI 起不来”当成业务代码错误。
+
+6. 截图可用 `gnome-screenshot`、Wayland 下的 `grim` 或 ImageMagick 的 `import`，保存到 `docs/screenshots/`。
+
+### 两个平台的差异对照
+
+| 项目 | Windows | Linux |
+| --- | --- | --- |
+| 安装 uv | 官方 irm 脚本或 winget | 官方 curl 脚本 |
+| uv 安装位置 | `%USERPROFILE%\.local\bin` | `~/.local/bin` |
+| 虚拟环境解释器 | `.venv\Scripts\python.exe` | `.venv/bin/python` |
+| 激活命令 | `.\.venv\Scripts\Activate.ps1` | `source .venv/bin/activate` |
+| 终端编码 | 旧版 PowerShell 需 `chcp 65001` | 通常已是 UTF-8 |
+| 图形显示 | 桌面会话 | 需要 `DISPLAY` 或 `WAYLAND_DISPLAY` |
+| 截图工具 | Win + Shift + S | gnome-screenshot / grim / import |
+
+结论：平台差异只影响“怎么装、怎么激活、怎么截图”，不影响“怎么写代码、怎么测试”。任何人都不应把只适用于自己系统的变体写进 README 的通用命令。
+
+### 常见环境问题
+
+| 现象 | 处理方向 |
+| --- | --- |
+| `uv: command not found` | 确认安装目录在 PATH，并重开终端 |
+| 命令用了系统 Python | 统一改用 `uv run <命令>`；确认 `uv run python` 打印的是 `.venv` 内路径 |
+| `import tkinter` 失败 | 确认在 uv 环境中；若确实用系统 Python 则安装 `python3-tk` |
+| GUI 窗口打不开 | 检查显示环境；无桌面时改用自动化测试或由有桌面的成员截图 |
+| 依赖安装失败 | 检查网络与 pypi 可达性，不要用全局 pip 绕过 |
+| `uv.lock` 合并冲突 | 不要手改 `uv.lock`，交给 uv 重新解析并评审差异 |
 
 本项目的依赖声明以 `pyproject.toml` 为准，精确解析结果以 `uv.lock` 为准。GUI 框架尚未选定，因此当前没有运行时第三方 GUI 依赖；实现阶段应在设计文档中记录 Tkinter 或 PyQt 的选择及其依赖处理方式。
 
@@ -78,13 +198,27 @@ uv run mypy src
 
 当实现可安装的应用包后，再根据最终入口补充打包/构建命令；当前骨架不包含可运行入口。
 
+下面三套命令在 Windows 和 Linux 上完全相同，不区分平台，也不需要先激活虚拟环境：
+
+```text
+uv run python -m compileall src
+uv run ruff check .
+uv run mypy src
+```
+
 ## 运行
 
-业务入口将在实现阶段确定，并同步更新本节。建议统一使用 uv 执行，避免调用错误的全局 Python：
+业务入口将在实现阶段确定，并同步更新本节。统一使用 uv 执行，避免调用错误的全局 Python：
 
-```powershell
+```text
 uv run <项目启动命令>
 ```
+
+平台相关提醒：
+
+- 两个平台都使用同一个启动命令，不要为 Windows 单独写一套入口。
+- Windows 上如果用窗口方式启动，可用 `pythonw` 避免弹出控制台窗口；调试阶段仍建议保留控制台以便看到日志。
+- Linux 上启动 GUI 前确认显示环境可用（见“环境配置”中的检查命令）。
 
 当前阶段没有可运行的日程管理模块，不能以占位命令宣称系统已完成。
 
@@ -92,22 +226,46 @@ uv run <项目启动命令>
 
 测试框架已配置为 pytest，测试目录为 `tests/`：
 
-```powershell
+```text
 uv run pytest
 uv run pytest --cov=src --cov-report=term-missing
 ```
 
-业务实现后，测试至少应覆盖：新增、按日期查询、修改、删除、删除确认、空/非法输入、未选中记录和异常提示。GUI 测试结果与截图归档到 `docs/screenshots/`。
+测试命令在两个平台上完全一致。业务实现后，测试至少应覆盖：新增、按日期查询、修改、删除、删除确认、空/非法输入、未选中记录和异常提示。GUI 测试结果与截图归档到 `docs/screenshots/`，并记录操作系统与 Python/Tk 版本、前置数据、操作步骤、预期结果和实际结果。
+
+注意：在 `tests/` 还没有用例时，pytest 会显示 `collected 0 items`。这是“没有测试”，不是“测试通过”，不能作为验收证据。
 
 ## 结果记录
 
-初始化完成后，使用以下命令记录环境和仓库状态：
+环境状态使用以下命令记录，两个平台一致：
 
-```powershell
+```text
 uv run python --version
 uv lock --check
 git status --short --branch
 ```
+
+### 已验证的环境结果
+
+下表是 Linux 开发环境下实际执行得到的输出，作为团队复现的参照基线：
+
+| 检查项 | 命令 | 实际结果 |
+| --- | --- | --- |
+| 操作系统 | `cat /etc/os-release` | Ubuntu 26.04 LTS |
+| uv 版本 | `uv --version` | 0.12.13（`~/.local/bin/uv`） |
+| Python 版本 | `uv run python --version` | Python 3.12.14 |
+| 依赖同步 | `uv sync --dev --locked` | 安装 14 个包，锁文件无需变更 |
+| 锁文件一致性 | `uv lock --check` | 通过 |
+| 代码规范 | `uv run ruff check .` | `All checks passed!` |
+| 字节码编译 | `uv run python -m compileall -q src` | 通过 |
+| Tkinter 可用性 | `uv run python -c "import tkinter; print(tkinter.TkVersion)"` | 成功，Tk 9.0 |
+| 窗口创建 | `tkinter.Tk()` 后 `destroy()` | 成功（`DISPLAY=:0`） |
+| 类型检查 | `uv run mypy src` | `src` 下暂无 `.py` 文件，**不算通过** |
+| 自动化测试 | `uv run pytest` | `collected 0 items`，**不算通过** |
+
+表中最后两行必须如实呈现：当前仓库还没有业务代码和测试用例，因此类型检查和测试都处于“空集”状态。等第一个模块和第一个测试落地后再更新本表。
+
+Windows 环境结果待拥有 Windows 设备的成员按“Windows 开发环境”步骤执行后补充，请勿照抄上面的数据。
 
 业务完成后的结果应补充功能清单、测试数量与通过情况、已知限制和运行截图；不要把“工程骨架已建立”写成“功能已实现”。
 
