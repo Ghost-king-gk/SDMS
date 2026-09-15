@@ -1,8 +1,8 @@
 """环境门禁测试。
 
-本文件只验证运行环境是否满足项目要求，不验证任何业务功能。
+本文件只验证运行环境和打包配置是否满足项目要求，不验证任何业务功能。
 
-存在的意义：当环境不满足要求时，先在环境层给出明确失败，而不是让问题以
+存在的意义：当环境或打包配置不满足要求时，先在环境层给出明确失败，而不是让问题以
 "导入报错""窗口打不开""文件没写入"等形式出现在业务代码里，浪费排查时间。
 在三人各自不同的 Windows / Linux 机器上，这些测试是最先运行、最容易解释的一层。
 
@@ -14,6 +14,8 @@ import importlib
 import sqlite3
 import sys
 from contextlib import closing
+from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 
 import pytest
 
@@ -56,3 +58,37 @@ def test_sqlite3_can_open_in_memory_database() -> None:
     """
     with closing(sqlite3.connect(":memory:")) as connection:
         assert connection.execute("select 1").fetchone() == (1,)
+
+
+def test_project_package_is_importable() -> None:
+    """项目包必须能被导入。
+
+    这是所有业务测试和类型检查的前提。本测试失败说明 pyproject.toml 的
+    src 布局或打包配置有问题，而不是业务代码有问题。
+    """
+    package = importlib.import_module("schedule_management")
+    assert package.__file__ is not None, "包没有对应的源文件路径"
+
+    # 以路径层级判断，避免依赖平台相关的分隔符（Windows 用反斜杠）。
+    source = Path(package.__file__).resolve()
+    assert source.parent.name == "schedule_management", f"导入到了意外的位置：{source}"
+    assert source.parent.parent.name == "src", (
+        f"应以 editable 方式指向仓库 src 目录，实际为：{source}"
+    )
+
+
+def test_installed_version_matches_package_version() -> None:
+    """分发版本必须与包内 __version__ 一致。
+
+    版本号写在两处（pyproject.toml 与 __init__.py），本测试防止两处漂移：
+    否则会出现"安装的是 0.1.0，导入报的却是别的版本"这类难以察觉的问题。
+    """
+    package = importlib.import_module("schedule_management")
+    try:
+        installed = version("schedule-management-system")
+    except PackageNotFoundError:
+        pytest.fail("项目尚未作为可安装包装入当前环境，请先运行 uv sync --dev --locked")
+
+    assert installed == package.__version__, (
+        f"pyproject.toml 声明 {installed}，包内声明 {package.__version__}"
+    )
