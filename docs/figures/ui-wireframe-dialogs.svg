@@ -1,18 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 290" width="880" height="290" role="img" font-family="'Microsoft YaHei','PingFang SC','Noto Sans CJK SC',sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 296" width="880" height="296" role="img" font-family="'Microsoft YaHei','PingFang SC','Noto Sans CJK SC',sans-serif">
 <title>删除确认、错误提示与空状态线框图</title>
-<desc>三种必须覆盖的界面状态：模态确认、可理解的错误提示、清晰的空状态。</desc>
-<rect x="0" y="0" width="880" height="290" fill="#FFFFFF"/>
-<rect x="20" y="30" width="270" height="210" rx="8" fill="#FFFFFF" stroke="#5F5E5A" stroke-width="1"/>
+<desc>三种必须覆盖的界面状态：模态确认、来自后端校验结论的错误提示、清晰的空状态。</desc>
+<rect x="0" y="0" width="880" height="296" fill="#FFFFFF"/>
+<rect x="20" y="30" width="270" height="216" rx="8" fill="#FFFFFF" stroke="#5F5E5A" stroke-width="1"/>
 <rect x="20" y="30" width="270" height="32" rx="8" fill="#F1EFE8" stroke="#F1EFE8" stroke-width="0"/>
 <rect x="20" y="46" width="270" height="16" rx="6" fill="#F1EFE8" stroke="#F1EFE8" stroke-width="0"/>
 <path d="M20 62 L290 62" fill="none" stroke="#B4B2A9" stroke-width="1"/>
 <text x="36" y="46" font-size="13" font-weight="500" fill="#2C2C2A" text-anchor="start" dominant-baseline="central">确认删除</text>
-<rect x="305" y="30" width="270" height="210" rx="8" fill="#FFFFFF" stroke="#5F5E5A" stroke-width="1"/>
+<rect x="305" y="30" width="270" height="216" rx="8" fill="#FFFFFF" stroke="#5F5E5A" stroke-width="1"/>
 <rect x="305" y="30" width="270" height="32" rx="8" fill="#F1EFE8" stroke="#F1EFE8" stroke-width="0"/>
 <rect x="305" y="46" width="270" height="16" rx="6" fill="#F1EFE8" stroke="#F1EFE8" stroke-width="0"/>
 <path d="M305 62 L575 62" fill="none" stroke="#B4B2A9" stroke-width="1"/>
-<text x="321" y="46" font-size="13" font-weight="500" fill="#2C2C2A" text-anchor="start" dominant-baseline="central">输入有误</text>
-<rect x="590" y="30" width="270" height="210" rx="8" fill="#FFFFFF" stroke="#5F5E5A" stroke-width="1"/>
+<text x="321" y="46" font-size="13" font-weight="500" fill="#2C2C2A" text-anchor="start" dominant-baseline="central">无法保存</text>
+<rect x="590" y="30" width="270" height="216" rx="8" fill="#FFFFFF" stroke="#5F5E5A" stroke-width="1"/>
 <rect x="590" y="30" width="270" height="32" rx="8" fill="#F1EFE8" stroke="#F1EFE8" stroke-width="0"/>
 <rect x="590" y="46" width="270" height="16" rx="6" fill="#F1EFE8" stroke="#F1EFE8" stroke-width="0"/>
 <path d="M590 62 L860 62" fill="none" stroke="#B4B2A9" stroke-width="1"/>
@@ -20,22 +20,22 @@
 <text x="36" y="92" font-size="13" font-weight="400" fill="#2C2C2A" text-anchor="start" dominant-baseline="central">确定要删除日程</text>
 <text x="36" y="114" font-size="13" font-weight="500" fill="#2C2C2A" text-anchor="start" dominant-baseline="central">「高等数学作业」吗？</text>
 <text x="36" y="140" font-size="12" font-weight="400" fill="#5F5E5A" text-anchor="start" dominant-baseline="central">删除后无法恢复。</text>
-<rect x="60" y="178" width="90" height="34" rx="6" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
-<text x="105" y="195" font-size="13" font-weight="500" fill="#2C2C2A" text-anchor="middle" dominant-baseline="central">取消</text>
-<rect x="160" y="178" width="90" height="34" rx="6" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.5"/>
-<text x="205" y="195" font-size="13" font-weight="500" fill="#791F1F" text-anchor="middle" dominant-baseline="central">删除</text>
-<circle cx="337" cy="92" r="11" fill="#FCEBEB" stroke="#A32D2D" stroke-width="1"/>
-<text x="337" y="93" font-size="14" font-weight="500" fill="#791F1F" text-anchor="middle" dominant-baseline="central">!</text>
-<text x="321" y="122" font-size="13" font-weight="500" fill="#2C2C2A" text-anchor="middle" dominant-baseline="central">日期格式不正确</text>
-<text x="321" y="144" font-size="12" font-weight="400" fill="#5F5E5A" text-anchor="middle" dominant-baseline="central">应为 YYYY-MM-DD</text>
-<text x="321" y="162" font-size="12" font-weight="400" fill="#5F5E5A" text-anchor="middle" dominant-baseline="central">例：2026-10-15</text>
-<rect x="350" y="178" width="90" height="34" rx="6" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
-<text x="395" y="195" font-size="13" font-weight="500" fill="#2C2C2A" text-anchor="middle" dominant-baseline="central">确定</text>
-<rect x="590" y="62" width="270" height="128" rx="0" fill="#FAFAF8" stroke="#FAFAF8" stroke-width="0"/>
+<rect x="60" y="182" width="90" height="34" rx="6" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<text x="105" y="199" font-size="13" font-weight="500" fill="#2C2C2A" text-anchor="middle" dominant-baseline="central">取消</text>
+<rect x="160" y="182" width="90" height="34" rx="6" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.5"/>
+<text x="205" y="199" font-size="13" font-weight="500" fill="#791F1F" text-anchor="middle" dominant-baseline="central">删除</text>
+<circle cx="440" cy="92" r="11" fill="#FCEBEB" stroke="#A32D2D" stroke-width="1"/>
+<text x="440" y="93" font-size="14" font-weight="500" fill="#791F1F" text-anchor="middle" dominant-baseline="central">!</text>
+<text x="440" y="122" font-size="13" font-weight="500" fill="#2C2C2A" text-anchor="middle" dominant-baseline="central">标题不能为空</text>
+<text x="440" y="144" font-size="12" font-weight="400" fill="#5F5E5A" text-anchor="middle" dominant-baseline="central">日程尚未保存，修改后可重试</text>
+<text x="440" y="166" font-size="12" font-weight="400" fill="#888780" text-anchor="middle" dominant-baseline="central">（结论来自后端校验，界面只呈现）</text>
+<rect x="395" y="182" width="90" height="34" rx="6" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<text x="440" y="199" font-size="13" font-weight="500" fill="#2C2C2A" text-anchor="middle" dominant-baseline="central">确定</text>
+<rect x="590" y="62" width="270" height="134" rx="0" fill="#FAFAF8" stroke="#FAFAF8" stroke-width="0"/>
 <path d="M590 62 L860 62" fill="none" stroke="#B4B2A9" stroke-width="1"/>
-<path d="M590 190 L860 190" fill="none" stroke="#B4B2A9" stroke-width="1"/>
-<text x="725" y="112" font-size="13" font-weight="500" fill="#5F5E5A" text-anchor="middle" dominant-baseline="central">2026-10-15 暂无日程</text>
-<text x="725" y="138" font-size="12" font-weight="400" fill="#888780" text-anchor="middle" dominant-baseline="central">点击「新增」添加第一条</text>
-<text x="606" y="214" font-size="12" font-weight="400" fill="#5F5E5A" text-anchor="start" dominant-baseline="central">共 0 条</text>
-<text x="440" y="268" font-size="12" font-weight="400" fill="#5F5E5A" text-anchor="middle" dominant-baseline="central">左：删除确认必须由界面发起；中：错误提示给可执行的修正建议；右：空状态说明当前不是故障</text>
+<path d="M590 196 L860 196" fill="none" stroke="#B4B2A9" stroke-width="1"/>
+<text x="725" y="118" font-size="13" font-weight="500" fill="#5F5E5A" text-anchor="middle" dominant-baseline="central">2026-10-15 暂无日程</text>
+<text x="725" y="144" font-size="12" font-weight="400" fill="#888780" text-anchor="middle" dominant-baseline="central">点击「新增」添加第一条</text>
+<text x="606" y="220" font-size="12" font-weight="400" fill="#5F5E5A" text-anchor="start" dominant-baseline="central">共 0 条</text>
+<text x="440" y="274" font-size="12" font-weight="400" fill="#5F5E5A" text-anchor="middle" dominant-baseline="central">左：删除确认必须由界面发起；中：错误提示呈现的是后端校验结论，并给出可执行的下一步；右：空状态说明当前不是故障</text>
 </svg>

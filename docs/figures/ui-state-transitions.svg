@@ -21,7 +21,7 @@
 <text x="450.0" y="312.0" font-size="12" font-weight="400" fill="#3B6D11" text-anchor="middle" dominant-baseline="central">模态对话框等待选择</text>
 <rect x="640" y="270" width="200" height="64" rx="8" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.5"/>
 <text x="740.0" y="293.0" font-size="14" font-weight="500" fill="#791F1F" text-anchor="middle" dominant-baseline="central">错误提示</text>
-<text x="740.0" y="312.0" font-size="12" font-weight="400" fill="#A32D2D" text-anchor="middle" dominant-baseline="central">解析或写入失败</text>
+<text x="740.0" y="312.0" font-size="12" font-weight="400" fill="#A32D2D" text-anchor="middle" dominant-baseline="central">无法识别或写入失败</text>
 <path d="M260 102 L342 102" fill="none" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#ar)"/>
 <text x="305" y="92" font-size="12" font-weight="400" fill="#5F5E5A" text-anchor="middle" dominant-baseline="central">选中一行</text>
 <path d="M350 86 C 320 48, 290 48, 260 86" fill="none" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#ar)"/>
@@ -39,7 +39,7 @@
 <path d="M350 302 L200 302 L200 142" fill="none" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#ar)"/>
 <text x="285" y="316" font-size="12" font-weight="400" fill="#5F5E5A" text-anchor="middle" dominant-baseline="central">确定 → 删除成功后刷新</text>
 <path d="M700 134 L700 262" fill="none" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#ar)"/>
-<text x="710" y="205" font-size="12" font-weight="400" fill="#5F5E5A" text-anchor="start" dominant-baseline="central">解析 / 保存失败</text>
+<text x="710" y="205" font-size="12" font-weight="400" fill="#5F5E5A" text-anchor="start" dominant-baseline="central">识别 / 保存失败</text>
 <path d="M680 262 L680 142" fill="none" stroke="#5F5E5A" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ar)"/>
 <text x="670" y="205" font-size="12" font-weight="400" fill="#5F5E5A" text-anchor="end" dominant-baseline="central">关闭，保留已填内容</text>
 <path d="M550 302 L632 302" fill="none" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#ar)"/>
