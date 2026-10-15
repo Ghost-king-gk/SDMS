@@ -24,7 +24,7 @@
 
 **依赖合规。** PySide6 是第三方包，按 `AGENTS.md` 要求记录来源、版本与许可证：来源 PyPI（`pypi.org/project/PySide6`），许可证 `LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only`（本项目按 LGPL-3.0-only 条款使用）。**这也是选 PySide6 而不是 PyQt6 的原因**：两者 API 基本一致，但 PyQt6 在 GPL 之外需要商业授权，PySide6 是 Qt 官方绑定，条款更宽松。
 
-**一个必须解决的合规点。** `Requests/日程管理系统.md` 的「文档」节明文要求：**「如果有用到第三方的包，放在 src 目录下的 lib 子目录下」**。这条比 `AGENTS.md` 的软性表述更硬。但 PySide6 的二进制（`.pyd` / `.dll` / `.so`）体积在百 MB 量级且**绑定平台**——把 Windows 上安装的 Qt 运行库整包拷进 `src/lib/`，Linux 侧无法复用，还可能让提交包大到交不上去。因此本文的处理见第 9 节 T-01，属于**必须有人拍板**的合规项，不能默认跳过。
+**一个必须解决的合规点。** `Requests/日程管理系统.md` 的「文档」节明文要求：**「如果有用到第三方的包，放在 src 目录下的 lib 子目录下」**。这条比 `AGENTS.md` 的软性表述更硬。这不是理论担心——本机实测安装后 `PySide6` 包目录为 **646.7 MB**（含 Qt 运行库与可选组件，见 8.2 节实测记录），且其中的二进制扩展绑定平台：把 Windows 上装好的 Qt 运行库整包拷进 `src/lib/`，Linux 侧无法复用，提交包还会大到交不上去。处理办法见第 9 节 T-01，属于**必须有人拍板**的合规项，不能默认跳过。
 
 **选型代价与回退。** 代价是 `dependencies` 不再为空，环境搭建多一步 `uv sync`，且 Windows / Linux 两端都要验证 `import PySide6` 与创建窗口成功。若后期因环境原因回退 Tkinter，本文的布局、状态机、交互规则与验收用例全部成立，只需替换控件类名——这也是把它们写在文档里而不是写在代码里的原因。
 
@@ -154,16 +154,18 @@ V-10 与 V-11 是界面层的**核心断言**，必须用测试替身验证「�
 
 ## 7. 与实现文件的映射
 
-后续 P09、P10 落地时，本文各节对应到这些文件：
+后续 P09、P10 落地时，本文各节对应到这些文件。P09 的四个非 GUI 模块已于 2026-10-15 落地（详见第 10 节），下表标注了各自的当前状态：
 
-| 文件（未来路径） | 主要 Qt 类型 | 承接本文 |
-| --- | --- | --- |
-| `ui/app.py` | `QApplication`、`QMainWindow`、`QToolBar`、`QStatusBar` | 第 3 节布局与事件接线；进程唯一的 `QApplication` 实例在本模块的 `main()` 中创建 |
-| `ui/controller.py` | （无控件，纯协调） | 第 5 节全部：选中态、调用用例、错误转提示 |
-| `ui/presenters.py` | （无控件，纯函数） | 显示格式化、条数文案、错误到提示的映射 |
-| `ui/calendar_view.py` | `QCalendarWidget` | 第 3 节 ①，含标记绘制与周一起始 |
-| `ui/date_picker.py` | `QCalendarWidget` 包一层浮层 | 第 5.1 节日期选择浮层；与 `calendar_view.py` 共用同一个「日期标记」绘制函数 |
-| `ui/schedule_form.py` | `QDialog`、`QLineEdit`、`QTextEdit` | 第 4 节表单态，新增与修改共用 |
+| 文件（未来路径） | 主要 Qt 类型 | 承接本文 | 状态 |
+| --- | --- | --- | --- |
+| `ui/view_models.py` | （无控件，纯数据） | 行模型、表单草稿与打开表单的上下文 | 已落地 |
+| `ui/ports.py` | （无控件，Protocol） | 界面与外部世界的三个端口 | 已落地 |
+| `ui/presenters.py` | （无控件，纯函数） | 显示格式化、条数文案、错误到提示的映射 | 已落地 |
+| `ui/controller.py` | （无控件，纯协调） | 第 5 节全部：选中态、调用用例、错误转提示 | 已落地 |
+| `ui/app.py` | `QApplication`、`QMainWindow`、`QToolBar`、`QStatusBar` | 第 3 节布局与事件接线；进程唯一的 `QApplication` 实例在本模块的 `main()` 中创建 | P10 |
+| `ui/calendar_view.py` | `QCalendarWidget` | 第 3 节 ①，含标记绘制与周一起始 | P10 |
+| `ui/date_picker.py` | `QCalendarWidget` 包一层浮层 | 第 5.1 节日期选择浮层；与 `calendar_view.py` 共用同一个「日期标记」绘制函数 | P10 |
+| `ui/schedule_form.py` | `QDialog`、`QLineEdit`、`QTextEdit` | 第 4 节表单态，新增与修改共用 | P10 |
 
 分层约束（违反即视为设计错误）：`ui` 不 import `sqlite3`，不拼 SQL；**领域层不 import `PySide6`**（也不 import `tkinter`——换框架不改这条）；服务层不弹窗；**模块导入时不得创建 `QApplication`、不得弹窗、不得连接数据库**（这是 CI 里最容易踩的一条：pytest 收集阶段一旦触发窗口创建，在没有显示服务的 Linux 上会直接挂）。
 
@@ -193,15 +195,98 @@ PR #5 审查（zch，2026-10-14）提出三条意见，处理如下。
 
 **一处连带收益**：原先「自绘月历」的唯一理由是绕开第三方依赖，PySide6 引入后该理由消失，主窗口月历与日期浮层都用 `QCalendarWidget`，第 7 节里那个“`calendar_view` 与 `date_picker` 共用日历网格”的自绘模块不再需要。少一块自写代码，跨平台与闰年也由 Qt 保证。
 
+### 8.2 PySide6 环境实测（2026-10-15，Windows）
+
+不是"应该能用"，是**真的装起来跑过**。命令：`uv run --python 3.12 --with PySide6 python scripts/qt_probe.py`（脚本已入库；Linux 无显示环境时前置 `QT_QPA_PLATFORM=offscreen`）。
+
+| 探测项 | 实测结果 | 对应本文的哪条结论 |
+| --- | --- | --- |
+| PySide6 / Qt 版本 | **6.12.0 / 6.12.0** | 1.1 节版本策略；与 PyPI 上 2026-10-08 发布的最新稳定版一致 |
+| 包目录体积 | **646.7 MB** | T-01 不能整包入库的定量依据 |
+| 周起始可设为周一 | 是（`setFirstDayOfWeek(Qt.Monday)` 后读回确为 `DayOfWeek.Monday`） | 3 节第四条约束 |
+| 闰年 | 2028-02 为 29 天，可选中 `2028-02-29` | **V-07 的闰年部分已被机器验证**，不用等到人工验收才发现日历少一天 |
+| 列表列数 | `QTableWidget` 三列建立正常 | 3 节 ③ |
+| 日期框宽容性 | `QLineEdit` 原样接受 `2026/10/15` | 5.1 节"不用 `QDateEdit`"的选择有了实测支撑 |
+| `QDateEdit` 显示格式 | `yyyy-MM-dd` | 同上：它会按该格式先行强校验，所以不当日期框 |
+
+两条从这次实测里得出的结论：
+
+1. **V-07 的闰年分支降级为半自动**。翻页与跨月灰显仍要人眼看着截图确认，但"2028 年 2 月有 29 天、且能被选中"已经由探测脚本断言过。
+2. **V-17 的 Linux 侧仍然必做**。Windows 侧能跑不代表 Linux 侧能跑：`QApplication` 在没有显示服务的环境里会直接失败（探测脚本因此需要 `QT_QPA_PLATFORM=offscreen`），这一条正好是第 7 节那条"导入期不得创建窗口"的现实来源。
+
 ## 9. 暂定项（不影响开工）
 
 GUI 框架与存储已于 2026-10-14 定稿（见 1.1 节与 8.1 节），不再列入待确认。剩余各项按 ljj 意见**暂定**：先按下面的默认值开工，不阻塞 P09；等在 M0 冻结或打磨阶段一次性统一调整。
 
 | 编号 | 暂定项 | 暂定值 | 由谁、何时拍板 |
 | --- | --- | --- | --- |
-| T-01 | **第三方包如何满足「放 `src/lib/`」的课程要求**（合规项，非风格问题） | 暂按：`src/lib/README.md` 写明来源、版本、许可证与安装命令，附 `requirements-lock.txt`；不把二进制整包入库 | zch 在 M0 冻结前向任课教师确认。若坚持整包入库，需另议（体积与跨平台见 1.1 节） |
+| T-01 | **第三方包如何满足「放 `src/lib/`」的课程要求**（合规项，非风格问题） | 暂按：`src/lib/README.md` 写明来源、版本、许可证与安装命令，附依赖清单；不把二进制整包入库（**实测依据：包目录 646.7 MB 且绑定平台**，见 8.2 节） | zch 在 M0 冻结前向任课教师确认。若坚持整包入库，需另议（体积与跨平台见 1.1 节） |
 | T-02 | 后端宽容解析的支持范围 | 支持 `2026/10/15`、`2026.10.15`、`2026-10-15` 等分隔符差异；**不支持** `明天`、`下周三` 一类相对日期 | zch 在写 `contracts.md` 时给出清单，界面不设限，需写进契约以便验收（V-04、V-16） |
 | T-03 | 数据库文件位置 | 跨平台用户数据目录下的 `sdms/schedules.db`，不依赖运行时当前工作目录；测试始终注入临时路径 | xhy 在基础设施落地时确定，UI 只消费路径，不参与决定 |
 | T-04 | 字段长度上限 | 标题 100 字符，备注 500 字符；超限的行为与提示文案由后端返回 | 三人确认后写入契约，不冒充课程规定 |
 
 T-02 与 T-04 会影响 V-03、V-04、V-16 的预期文案，拍板后回来改这三行的「预期」列即可，不动流程。
+
+## 10. P09 落地说明（2026-10-15）
+
+界面层**不依赖任何 GUI 运行库**的那部分已经写完并通过测试。这一节记录它落在哪些文件、和草案差在哪、以及哪些验收项从「人工点头」升级成了「机器断言」。
+
+### 10.1 已落地与尚未落地的文件
+
+| 文件 | 状态 | 内容 |
+| --- | --- | --- |
+| `src/schedule_management/ui/view_models.py` | 已落地 | `ScheduleRow`、`ScheduleDraft`、`FormRequest` 三个纯数据信封 |
+| `src/schedule_management/ui/ports.py` | 已落地 | 三个端口协议：`ScheduleLike`、`ScheduleServicePort`、`MainViewPort` |
+| `src/schedule_management/ui/presenters.py` | 已落地 | 纯函数：格式化、条数文案、错误到提示的映射 |
+| `src/schedule_management/ui/controller.py` | 已落地 | 选中态、筛选日期、六类操作的服务调用与错误呈现 |
+| `tests/unit/ui_fakes.py` | 已落地 | UI 自己的测试替身：假服务（记录调用）+ 假窗口（记录输出） |
+| `tests/unit/test_presenters.py` | 已落地 | 文案与错误映射的穷举 |
+| `tests/unit/test_controller.py` | 已落地 | V-01~V-16 中可自动化部分的断言，重点是调用次数 |
+| `tests/unit/test_ui_layering.py` | 已落地 | 用 AST 扫描源码，禁止 `ui` 包 import `PySide6` / `tkinter` / `sqlite3` |
+| `ui/app.py`、`calendar_view.py`、`date_picker.py`、`schedule_form.py` | **未落地** | P10，需要先把 PySide6 装起来（T-01 定论后才能动） |
+
+**为什么 `controller.py` 与 `presenters.py` 不许碰 Qt。** 这两块是全部交互规则所在地，一旦 import 了 `PySide6`，在没有显示服务的 Linux 上 pytest 收集阶段就会挂掉。第 7 节那条约束现在有测试兜底了：谁手滑 import 了 Qt，`tests/unit/test_ui_layering.py` 会直接失败，并且报错信息会写清原因。
+
+### 10.2 三个端口（界面层唯一的对外依赖方式）
+
+| 端口 | 谁来实现 | 界面拿它干什么 |
+| --- | --- | --- |
+| `ScheduleLike` | 领域层的 `Schedule` 只要具备 `id / title / date / time / notes` 五个属性即可 | `presenters` 把它转成列表行，不需要 import 领域类 |
+| `ScheduleServicePort` | 由 zch 的 `application/service.py` 落地；在此之前用 `ui_fakes.FakeScheduleService` | 四个用例：`list / create / update / delete` |
+| `MainViewPort` | 由 P10 的窗口代码适配 | 九个单向输出 + 两个提问（`ask_delete_confirm`、`open_schedule_form`） |
+
+全部用 `typing.Protocol` 的**结构性类型**：真实现换进来时 controller 不用改一行，`mypy` 负责证明它对得上（`mypy src tests` 当前全绿，说明替身与协议是严格匹配的，不是"跑得通就算"）。
+
+### 10.3 与契约草案的唯一偏差：create / update 收原始字符串
+
+计划第 4 节写的是「create/update 的 `day` 与 `at` 已经是日期/时间对象；GUI 字符串解析在 controller」。**这句话已经被 zch 在 PR #5 的第 1 条意见改写**：日期由用户手写或日历点选，统一交给后端的转换算法处理，界面不做准入检查。因此端口签名为：
+
+```text
+list_schedules(day: date) -> Sequence[ScheduleLike]
+create_schedule(title: str, date_text: str, time_text: str, notes: str) -> ScheduleLike
+update_schedule(schedule_id: str, title: str, date_text: str, time_text: str, notes: str) -> ScheduleLike
+delete_schedule(schedule_id: str) -> None
+```
+
+`list_schedules` 仍然收 `date`：这个值来自日历控件的点选结果，本身就不是自由文本，不涉及"宽容解析"。
+
+**这条偏差必须写进 `docs/design/contracts.md` 才算定稿**，否则 zch 按原草案写出 `day: dt.date` 的签名，两边就对不上了。
+
+另一个关联决定：`presenters.error_category` 目前按**异常类名**判定而不是 `isinstance`，因为 `domain/errors.py` 与 `application/errors.py` 还没落地，界面不能在导入期依赖它们。`tests/unit/ui_fakes.py` 里的三个假异常类特意与契约同名（`ValidationError` / `ScheduleNotFound` / `StorageError`），就是为了覆盖到这条路径。真异常类可用后，把该函数体换成 `isinstance` 判定即可，调用方无需改动。
+
+### 10.4 哪些验收项从人工升级成了机器断言
+
+| 编号 | 断言位置 | 断言内容 |
+| --- | --- | --- |
+| V-01 / V-06 | `test_start_shows_today_rows_with_count`、`test_start_on_empty_database_...` | 启动即查当天；空库走空状态分支而不是白板 |
+| V-05 | `test_switching_day_reloads_and_clears_selection` | 换日期重查并清空选中 |
+| **V-10** | `test_delete_without_selection_never_calls_service` | **`delete` 调用 0 次**，只出一条提醒，且不进错误区 |
+| **V-11** | `test_delete_cancelled_confirmation_never_calls_service` | **确认框取消后 `delete` 调用 0 次**，数据一字节未改 |
+| V-12 | `test_delete_with_cancel_still_calls_service_once_when_confirmed` | 点确定才调一次，参数是 `schedule_id` 而不是标题或行号 |
+| V-04 / V-16 | `test_create_forwards_raw_date_text_without_parsing`、`test_create_forwards_unrecognizable_...` | 对照组：`2026/10/15` 与 `明天` **都原样抵达服务**；失败时显示后端原因，标题不是「日期格式不正确」 |
+| V-02（失败分支） | `test_failed_save_reopens_form_with_previous_values` | 写入失败重开表单，`initial` 必须是上一次的草稿 |
+| V-08 / V-09 | `test_edit_prefills_from_row_and_calls_update_with_id`、`test_updated_row_can_leave_current_day_list` | 按 id 修改；改到别的日期后当前列表变短是正常的 |
+| V-13（部分） | `test_unexpected_exception_gives_generic_hint_only`、`test_failed_refresh_keeps_last_good_rows` | 未预期异常只给通用提示且不泄露技术细节；刷新失败保留上一次的数据 |
+| F-06（部分） | `test_storage_error_points_at_the_data_file` | 存储类错误指向数据文件并给出下一步 |
+
+跑法：`uv run pytest tests/unit -v`；类型验证：`uv run mypy src tests`（当前 11 个文件全绿）。其余带界面外观的部分（V-07 跨月闰年、V-15 浮层回填、V-17 双平台）只能留在 P10 之后人工验收。
