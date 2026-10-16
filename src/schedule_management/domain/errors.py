@@ -2,4 +2,4 @@
 
 
 class ValidationError(Exception):
-    """日程字段不符合业务规则。"""
+    pass

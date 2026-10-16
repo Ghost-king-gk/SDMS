@@ -1,8 +1,4 @@
-"""SQLite 日程存储适配器。
-
-实现应用层定义的 ScheduleRepository 契约，负责把日程对象写入 SQLite 数据库，
-并保证每次写操作原子完成或回滚。
-"""
+"""SQLite 日程存储适配器。"""
 
 import sqlite3
 from datetime import date, time
@@ -22,11 +18,6 @@ CREATE TABLE IF NOT EXISTS schedules (
 
 
 class SqliteScheduleRepository:
-    """基于 SQLite 的日程存储。
-
-    连接由装配点创建并负责关闭；本类只负责 CRUD、序列化与异常转换。
-    """
-
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
         self._connection.row_factory = sqlite3.Row
@@ -35,7 +26,6 @@ class SqliteScheduleRepository:
 
     @staticmethod
     def _row_to_schedule(row: sqlite3.Row) -> Schedule:
-        """把数据库行还原为日程对象（字符串反序列化为 date/time）。"""
         return Schedule(
             id=row["id"],
             title=row["title"],
@@ -45,7 +35,6 @@ class SqliteScheduleRepository:
         )
 
     def add(self, schedule: Schedule) -> None:
-        """新增日程；ID 已存在时报告存储冲突，不覆盖原记录。"""
         try:
             self._connection.execute(
                 "INSERT INTO schedules (id, title, date, time, notes) VALUES (?, ?, ?, ?, ?)",
@@ -68,7 +57,6 @@ class SqliteScheduleRepository:
             raise StorageError("写入日程失败", cause=exc) from exc
 
     def get(self, schedule_id: str) -> Schedule | None:
-        """按 ID 查询；不存在返回 None。"""
         try:
             row = self._connection.execute(
                 "SELECT id, title, date, time, notes FROM schedules WHERE id = ?",
@@ -79,7 +67,6 @@ class SqliteScheduleRepository:
         return None if row is None else self._row_to_schedule(row)
 
     def list_by_date(self, day: date) -> list[Schedule]:
-        """返回指定日期的全部日程，按 time、id 确定性排序。"""
         try:
             rows = self._connection.execute(
                 "SELECT id, title, date, time, notes FROM schedules "
@@ -91,7 +78,6 @@ class SqliteScheduleRepository:
         return [self._row_to_schedule(row) for row in rows]
 
     def update(self, schedule: Schedule) -> bool:
-        """更新日程；找不到记录返回 False。"""
         try:
             cursor = self._connection.execute(
                 "UPDATE schedules SET title = ?, date = ?, time = ?, notes = ? WHERE id = ?",
@@ -110,7 +96,6 @@ class SqliteScheduleRepository:
         return cursor.rowcount > 0
 
     def delete(self, schedule_id: str) -> bool:
-        """删除日程；找不到记录返回 False。"""
         try:
             cursor = self._connection.execute(
                 "DELETE FROM schedules WHERE id = ?",

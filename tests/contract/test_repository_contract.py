@@ -1,7 +1,4 @@
-"""存储契约测试。
-
-让内存实现与 SQLite 实现运行同一套行为断言，确保两者行为一致、可以互换。
-"""
+"""存储契约测试。"""
 
 import sqlite3
 from datetime import date, time
@@ -23,13 +20,11 @@ def make_schedule(
     at: time = time(9, 30),
     notes: str = "",
 ) -> Schedule:
-    """构造一条合法日程，每次使用全新 ID。"""
     return Schedule(id=new_schedule_id(), title=title, date=day, time=at, notes=notes)
 
 
 @pytest.fixture(params=["memory", "sqlite"])
 def repo(request):
-    """分别用内存和 SQLite 实现运行同一套测试。"""
     if request.param == "memory":
         yield InMemoryScheduleRepository()
     else:

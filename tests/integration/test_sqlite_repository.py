@@ -1,7 +1,4 @@
-"""SQLite 存储集成测试。
-
-使用真实临时数据库文件，重点验证重启恢复与失败不破坏旧数据。
-"""
+"""SQLite 存储集成测试。"""
 
 import sqlite3
 from datetime import date, time
@@ -22,16 +19,10 @@ def make_schedule(
     at: time = time(9, 30),
     notes: str = "",
 ) -> Schedule:
-    """构造一条合法日程，每次使用全新 ID。"""
     return Schedule(id=new_schedule_id(), title=title, date=day, time=at, notes=notes)
 
 
 def test_schedule_survives_reopen(tmp_path):
-    """关闭并重新打开同一个数据库文件后，数据仍然存在。
-
-    关键在于先 close 再 connect 同一个文件：只有这样才能证明数据真正落盘，
-    而不是还留在连接的内存缓存里。
-    """
     db_path = tmp_path / "schedule.db"
 
     first_connection = sqlite3.connect(db_path)
