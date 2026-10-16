@@ -6,16 +6,16 @@
 为什么需要它：
 - 「装不上」「打不开窗口」这类环境问题的排查成本很高，早一步把它验掉，
   后面的界面开发与验收才有地基；
-- V-17 要求 Windows 与 Linux 各验一次，两边跑**同一份脚本**才谈得上有可比性；
+- V-17 的实测结果要落到设计文档里，跑同一份脚本才能保证别人复现的是同一件事；
 - 第 6 节的验收记录要写明 PySide6 与 Qt 版本，版本号必须是实测的，不是抄 PyPI 的。
 
 跑法（不污染项目虚拟环境，用 uv 的临时环境）：
 
     uv run --python 3.12 --with PySide6 python scripts/qt_probe.py
 
-Linux 无显示服务时（CI、SSH 会话）必须指定离屏平台，否则 `QApplication` 会直接失败：
-
-    QT_QPA_PLATFORM=offscreen uv run --python 3.12 --with PySide6 python scripts/qt_probe.py
+目标平台是 Windows（GUI 适配只做这一端，见 ui-interaction.md 第 11 节）。
+若日后要在无显示服务的环境里跑这份脚本，前置 `QT_QPA_PLATFORM=offscreen`
+即可——但那属于扩展情形，不在当前验收范围内。
 
 退出码为 0 且最后一行输出 `ALL QT PROBES OK` 才算通过。
 """

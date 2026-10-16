@@ -19,6 +19,7 @@
 | --- | --- | --- |
 | GUI 框架 | **PySide6（Qt for Python）** | ljj 2026-10-14 答复：用 PySide，版本取当时最新稳定版，理由是原生控件的呈现效果明显好于 Tkinter |
 | 存储 | **SQLite** | 同上答复：比 MySQL 轻量，不需要起服务进程；用标准库 `sqlite3`，不引入 ORM |
+| 目标平台 | **Windows**（桌面 GUI） | zch 2026-10-16 答复：Linux 侧不做 GUI 适配，先把 Windows 端做完；作为交换，**界面与后端之间要留好替换入口，不作强耦合**，详见第 11 节 |
 
 **版本策略。** `pyproject.toml` 声明 `PySide6>=6.11.2,<7.0`，实际版本由 `uv.lock` 锁定，取该区间内最新稳定版。截至 2026-10-14，PyPI 上最新稳定版为 **6.12.0**（2026-10-08 发布，要求 Python `>=3.10,<3.16`，本项目 3.12.x 在范围内）。版本锁一次，中途不随手升级；确实要升就走 PR 并说明原因。
 
@@ -26,7 +27,9 @@
 
 **一个必须解决的合规点。** `Requests/日程管理系统.md` 的「文档」节明文要求：**「如果有用到第三方的包，放在 src 目录下的 lib 子目录下」**。这条比 `AGENTS.md` 的软性表述更硬。这不是理论担心——本机实测安装后 `PySide6` 包目录为 **646.7 MB**（含 Qt 运行库与可选组件，见 8.2 节实测记录），且其中的二进制扩展绑定平台：把 Windows 上装好的 Qt 运行库整包拷进 `src/lib/`，Linux 侧无法复用，提交包还会大到交不上去。处理办法见第 9 节 T-01，属于**必须有人拍板**的合规项，不能默认跳过。
 
-**选型代价与回退。** 代价是 `dependencies` 不再为空，环境搭建多一步 `uv sync`，且 Windows / Linux 两端都要验证 `import PySide6` 与创建窗口成功。若后期因环境原因回退 Tkinter，本文的布局、状态机、交互规则与验收用例全部成立，只需替换控件类名——这也是把它们写在文档里而不是写在代码里的原因。
+**选型代价与回退。** 代价是 `dependencies` 不再为空，环境搭建多一步 `uv sync`，且必须在 Windows 上验证 `import PySide6` 与创建窗口成功（V-17）。若后期因环境原因回退 Tkinter，本文的布局、状态机、交互规则与验收用例全部成立，只需替换控件类名——这也是把它们写在文档里而不是写在代码里的原因。
+
+**平台范围。** 桌面 GUI 的目标平台是 **Windows**，Linux 侧不做 GUI 适配，也不为它排期、不要求复跑验收清单。代价是字体度量与控件默认尺寸的差异只在 Windows 一侧被验证过；收益是 P10 的工期全部投在一端，先把东西做出来。这条不影响第 11 节的可替换性——正因为前端是可替换的，将来补一个 Linux 端或其它形态的前端才不需要重写后端。
 
 **日期控件不再自绘。** 原先「标准库 `calendar` + `ttk` 自绘月历」的方案建立在 `dependencies = []` 之上，该前提已经消失。Qt 自带 `QCalendarWidget`，跨月、闰年、周起始都由控件保证，`tkcalendar` 更无必要。见 5.1 节。
 
@@ -128,7 +131,7 @@
 
 自动化测不到的部分由人工验证。每条记录：操作系统版本、Python 版本、**PySide6 与 Qt 版本**（`python -c "import PySide6, PySide6.QtCore; print(PySide6.__version__, PySide6.QtCore.qVersion())"`）、前置数据、操作步骤、预期结果、实际结果、截图路径（存 `docs/screenshots/`）。截图只用虚构日程，不要把个人真实安排写进提交材料。
 
-采用 PySide6 后，**必须在 Windows 与 Linux 两台机器上各跑一遍完整清单**。Qt 是跨平台的，但字体度量与控件默认尺寸在两平台上不完全一致（例如同样 12 磅字，Linux 下中文行高可能更大），只在一端验过不能算通过。
+**清单只在 Windows 上跑一遍**（见 1.1 节「平台范围」）。Qt 虽然是跨平台的，但 Linux 侧不做 GUI 适配，不为它排期，也不要求另跑一遍。
 
 | 编号 | 需求 | 步骤 | 预期 |
 | --- | --- | --- | --- |
@@ -148,7 +151,7 @@
 | V-14 | 工程增强 | 新增若干条后退出程序，重新启动 | 数据仍在，说明持久化生效 |
 | V-15 | F-02 | 点日期旁「选择」打开日历浮层，点选某天 | 浮层关闭，日期框回填为标准格式文本，可继续编辑 |
 | V-16 | F-02 | 日期填完全无法识别的内容（如 `明天`）后保存 | 显示后端返回的原因，已填内容保留，可改后重试 |
-| V-17 | 工程增强 | Windows 与 Linux 各一次：`uv sync` 后启动程序 | 两端都能 `import PySide6`、主窗口显示无文字截断、日历周一开头一致，版本号记录到 screenshots 附录 |
+| V-17 | 工程增强 | Windows 上 `uv sync` 后启动程序 | 能 `import PySide6`、主窗口显示无文字截断、日历周一开头一致，版本号记录到 screenshots 附录 |
 
 V-10 与 V-11 是界面层的**核心断言**，必须用测试替身验证「服务调用次数为 0」，不能只靠肉眼看列表没变。V-04 与 V-16 是一组对照：**同一个字段，能识别的写法直接通过，不能识别的才报错**——两条都要跑，才能证明界面确实没有在前端先行拦截。
 
@@ -167,7 +170,7 @@ V-10 与 V-11 是界面层的**核心断言**，必须用测试替身验证「�
 | `ui/date_picker.py` | `QCalendarWidget` 包一层浮层 | 第 5.1 节日期选择浮层；与 `calendar_view.py` 共用同一个「日期标记」绘制函数 | P10 |
 | `ui/schedule_form.py` | `QDialog`、`QLineEdit`、`QTextEdit` | 第 4 节表单态，新增与修改共用 | P10 |
 
-分层约束（违反即视为设计错误）：`ui` 不 import `sqlite3`，不拼 SQL；**领域层不 import `PySide6`**（也不 import `tkinter`——换框架不改这条）；服务层不弹窗；**模块导入时不得创建 `QApplication`、不得弹窗、不得连接数据库**（这是 CI 里最容易踩的一条：pytest 收集阶段一旦触发窗口创建，在没有显示服务的 Linux 上会直接挂）。
+分层约束（违反即视为设计错误）：`ui` 不 import `sqlite3`，不拼 SQL；**领域层不 import `PySide6`**（也不 import `tkinter`——换框架不改这条）；服务层不弹窗；**模块导入时不得创建 `QApplication`、不得弹窗、不得连接数据库**（这是最容易踩的一条：pytest 收集阶段一旦触发窗口创建，在没有显示服务的环境里会直接挂掉，自动化测试连收集都过不去）。
 
 `QApplication` 只允许在 `ui/app.py` 的 `main()` 里出现一次。写成模块级 `app = QApplication([])` 会污染导入，也会让未来的 GUI 测试无法自行管理事件循环。
 
@@ -197,7 +200,7 @@ PR #5 审查（zch，2026-10-14）提出三条意见，处理如下。
 
 ### 8.2 PySide6 环境实测（2026-10-15，Windows）
 
-不是"应该能用"，是**真的装起来跑过**。命令：`uv run --python 3.12 --with PySide6 python scripts/qt_probe.py`（脚本已入库；Linux 无显示环境时前置 `QT_QPA_PLATFORM=offscreen`）。
+不是"应该能用"，是**真的装起来跑过**。命令：`uv run --python 3.12 --with PySide6 python scripts/qt_probe.py`（脚本已入库，在 Windows 上直接跑）。
 
 | 探测项 | 实测结果 | 对应本文的哪条结论 |
 | --- | --- | --- |
@@ -209,10 +212,23 @@ PR #5 审查（zch，2026-10-14）提出三条意见，处理如下。
 | 日期框宽容性 | `QLineEdit` 原样接受 `2026/10/15` | 5.1 节"不用 `QDateEdit`"的选择有了实测支撑 |
 | `QDateEdit` 显示格式 | `yyyy-MM-dd` | 同上：它会按该格式先行强校验，所以不当日期框 |
 
-两条从这次实测里得出的结论：
+**V-07 的闰年分支降级为半自动**。翻页与跨月灰显仍要人眼看着截图确认，但"2028 年 2 月有 29 天、且能被选中"已经由探测脚本断言过。
 
-1. **V-07 的闰年分支降级为半自动**。翻页与跨月灰显仍要人眼看着截图确认，但"2028 年 2 月有 29 天、且能被选中"已经由探测脚本断言过。
-2. **V-17 的 Linux 侧仍然必做**。Windows 侧能跑不代表 Linux 侧能跑：`QApplication` 在没有显示服务的环境里会直接失败（探测脚本因此需要 `QT_QPA_PLATFORM=offscreen`），这一条正好是第 7 节那条"导入期不得创建窗口"的现实来源。
+探测脚本同时是第 7 节那条"导入期不得创建窗口"的现实来源：`QApplication` 在没有显示服务的环境里会直接失败，所以 `tests/unit/` 下的三个测试模块才能在没有窗口的情况下正常收集与运行。
+
+### 8.3 第二轮审查答复（zch，2026-10-16）
+
+PR #5 第二轮审查提了两条，两条指向同一件事：**不要为 Linux 端 GUI 花时间，但前后端的接缝要留松**。
+
+| 意见 | 处理 | 落在哪 |
+| --- | --- | --- |
+| Linux 侧不需要 GUI 界面，先不适配 Linux 端；可以先预留 CLI 或 WebUI 的接口，保证「数据处理的后端」与「用户看到交互的前端」相分离 | 采纳。目标平台收窄为 Windows；接缝设计单独成节，见第 11 节 | 1.1 节平台范围、第 6 节、V-17、8.2 节、第 11 节 |
+| 把 Linux 端删了吧，我只是想说留好预留入口不要强耦合；先把 Windows 搞定 | 采纳。凡属「Linux 端验收」的要求一律删除，不再为它排期；其余提到 Linux 的表述改为不点名平台的中性说法 | 第 7 节、10.1 节（保留约束本身，去掉平台名） |
+
+删掉的是「Linux 端适配」，**留下的是接缝**。这两件事要分开看：
+
+- **删掉的**：V-17 的双平台验收、8.2 节的 Linux 命令提示、1.1 节「两端都要验证」的代价。
+- **保留的**：第 7 节「导入期不得创建窗口」与 ui 层不碰 GUI 运行库的 AST 守卫。这两条与平台无关——它们是自动化测试能在无显示环境下跑起来的前提，也是第 11 节那个接缝的技术地基。删了它们，将来换前端就得重写交互规则。
 
 ## 9. 暂定项（不影响开工）
 
@@ -245,7 +261,9 @@ T-02 与 T-04 会影响 V-03、V-04、V-16 的预期文案，拍板后回来改�
 | `tests/unit/test_ui_layering.py` | 已落地 | 用 AST 扫描源码，禁止 `ui` 包 import `PySide6` / `tkinter` / `sqlite3` |
 | `ui/app.py`、`calendar_view.py`、`date_picker.py`、`schedule_form.py` | **未落地** | P10，需要先把 PySide6 装起来（T-01 定论后才能动） |
 
-**为什么 `controller.py` 与 `presenters.py` 不许碰 Qt。** 这两块是全部交互规则所在地，一旦 import 了 `PySide6`，在没有显示服务的 Linux 上 pytest 收集阶段就会挂掉。第 7 节那条约束现在有测试兜底了：谁手滑 import 了 Qt，`tests/unit/test_ui_layering.py` 会直接失败，并且报错信息会写清原因。
+**为什么 `controller.py` 与 `presenters.py` 不许碰 Qt。** 这两块是全部交互规则所在地，一旦 import 了 `PySide6`，pytest 收集阶段就会在没有显示服务的环境里挂掉，界面逻辑也就没法脱离界面被测试。第 7 节那条约束现在有测试兜底了：谁手滑 import 了 Qt，`tests/unit/test_ui_layering.py` 会直接失败，并且报错信息会写清原因。
+
+这条约束同时是第 11 节"前端可替换"的技术前提：**交互规则不依附于任何一种呈现技术**，所以换掉呈现方式时它们原封不动。
 
 ### 10.2 三个端口（界面层唯一的对外依赖方式）
 
@@ -289,4 +307,54 @@ delete_schedule(schedule_id: str) -> None
 | V-13（部分） | `test_unexpected_exception_gives_generic_hint_only`、`test_failed_refresh_keeps_last_good_rows` | 未预期异常只给通用提示且不泄露技术细节；刷新失败保留上一次的数据 |
 | F-06（部分） | `test_storage_error_points_at_the_data_file` | 存储类错误指向数据文件并给出下一步 |
 
-跑法：`uv run pytest tests/unit -v`；类型验证：`uv run mypy src tests`（当前 11 个文件全绿）。其余带界面外观的部分（V-07 跨月闰年、V-15 浮层回填、V-17 双平台）只能留在 P10 之后人工验收。
+跑法：`uv run pytest tests/unit -v`；类型验证：`uv run mypy src tests`（当前 11 个文件全绿）。其余带界面外观的部分（V-07 跨月闰年、V-15 浮层回填、V-17 Windows 启动）只能留在 P10 之后人工验收。
+
+## 11. 目标平台与前端可替换性
+
+本节由 2026-10-16 的第二轮审查（8.3 节）催生，回答的问题是：**只做 Windows 端，为什么还要留接缝，接缝具体在哪。**
+
+### 11.1 只做 Windows，不等于可以把前后端焊死
+
+桌面 GUI 的目标平台是 Windows，Linux 侧不适配。但「只做一端」是排期决定，不是架构决定——如果把业务逻辑写进窗口代码里，将来无论加 Linux 端、加 CLI 还是加 WebUI，都得先做一次外科手术把它挖出来。反过来，接缝留住了，补前端是**新增**一个适配层，不是**重写**。
+
+分工边界（与第 1 节一致，这里从可替换性的角度重申）：
+
+| 侧 | 负责 | 不许碰 |
+| --- | --- | --- |
+| 后端（domain / application / infrastructure） | 数据是否合法、记录是否存在、存储是否可用、日期文本如何解析 | 不许 import `ui`，不许弹窗，不许知道用户在用窗口还是终端 |
+| 前端（ui） | 呈现、采集用户输入、把后端结论翻译成用户能读懂的句子 | 不做平行校验，不 import `sqlite3`，不拼 SQL |
+
+### 11.2 接缝就是两个 Protocol
+
+`ui/ports.py` 里那两个协议就是全部接缝，见 10.2 节。它们之所以能当接缝用，是因为 `controller` 只按协议说话，不按实现类说话：
+
+| 端口 | 当前实现（Windows 桌面） | 未来可换成的实现 |
+| --- | --- | --- |
+| `MainViewPort` | P10 的 `ui/app.py` 适配的 `QMainWindow` | `CliMainView`（输出打 stdout，提问用 `input()`）、WebUI 的 HTTP handler、乃至测试里的 `FakeMainView` |
+| `ScheduleServicePort` | zch 的 `application/service.py` | 任何满足同样四个方法的服务；换存储不影响这一层 |
+
+`MainViewPort` 的十一个方法（九个单向输出 + `ask_delete_confirm` / `open_schedule_form` 两个提问）就是**前端必须兑现的全部契约**。新前端只要兑现这十一个方法，就能接上现成的 `ScheduleController`。
+
+### 11.3 将来换一个前端，动什么不动什么
+
+以 CLI 前端为例（**现在不实现**，只作为接缝的验证口径）：
+
+| 动作 | 内容 |
+| --- | --- |
+| 要新增 | `schedule_management/cli/`（或 `ui/cli_main.py`）：一个实现 `MainViewPort` 的 `CliMainView`，加一个 `main()`，把 `ScheduleServicePort` 的真实现与 `CliMainView` 一起塞进 `ScheduleController` |
+| **不用改** | `view_models.py`、`ports.py`、`presenters.py`、`controller.py` 四个文件；后端三层的任何文件；`tests/unit/` 的 59 项测试（它们本就跑在无窗口环境里） |
+| 不用删 | 桌面端的 `ui/app.py` 等——两种前端可以共存，靠入口区分 |
+
+WebUI 同理：新增一个 `web/` 包，在请求处理里适配 `MainViewPort` 即可。**交互规则只有一份**，不存在「桌面版规则」和「网页版规则」两套。
+
+### 11.4 三条保证接缝不被焊死的硬约束
+
+1. **与呈现无关的四块不许碰 GUI 运行库**。`view_models` / `ports` / `presenters` / `controller` 不得 import `PySide6`、`tkinter`、`sqlite3`，由 `tests/unit/test_ui_layering.py` 用 AST 扫描强制。
+2. **第 5 节的交互规则不引用控件类名**。它只讲「调用什么、显示什么结论」；第 3 节的控件列是推荐实现而非契约（原文已注明），因此换控件不影响规则成立。
+3. **依赖方向单向**。ui → 端口 → 后端，后端不反向 import ui。第 10.1 节那条「controller 不许碰 Qt」是这条的落地点。
+
+### 11.5 现在不做的事（避免过度设计）
+
+- **现在不写 CLI 前端代码，也不引入任何 Web 框架**。预留的是接缝，不是提前把三种前端都实现一遍——那样只会多出两个没人用的半成品。
+- P10 的唯一额外要求：`ui/app.py` 只做 `MainViewPort` 的适配，**交互规则一律留在 `controller.py`**，不因为「窗口里写起来更顺手」就搬进去。
+- 可验收的判据（随时可查）：**若要把交互规则搬到另一个前端，需要改动 `controller.py` 或 `presenters.py`，即判定为耦合，须回头修接缝**；只需新增一个 `MainViewPort` 实现即视为接缝有效。这条判据不看主观感受，看改哪些文件。
