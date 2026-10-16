@@ -52,7 +52,7 @@
 
 | 区域 | Qt 控件 | 职责 |
 | --- | --- | --- |
-| ① 日历选择区 | `QCalendarWidget` | 显示月历、跨月前后缀日期（控件内建）、切换月份、回到今天、标记有日程的日期 |
+| ① 日历选择区 | `QCalendarWidget` | 显示月历、跨月前后缀日期（控件内建）、切换月份、回到今天、标记有日程的日期（**标记项尚未实现**，见 12.6 节） |
 | ② 当前日期条 | `QLabel` | 显示当前筛选日期与当天日程条数 |
 | ③ 日程列表 | `QTableWidget` | 三列（时间 / 标题 / 备注），每行 `Qt.UserRole` 绑定 `schedule_id`，按时间、id 确定性排序 |
 | ④ CRUD 工具栏 | `QToolBar` + `QPushButton` × 6 | 新增、查看、修改、删除、刷新、退出，**统一置于画布上侧** |
@@ -74,7 +74,7 @@
 | 状态 | 触发 | 界面表现 | 对应草图 |
 | --- | --- | --- | --- |
 | 列表态 | 启动 / 切换日期 / 刷新 | ③ 显示当天全部日程，② 显示条数，⑤ 显示「就绪」 | 主窗口 |
-| 日历态 | 点击月份箭头、日期格、今天 | ① 重绘当月网格，选中格高亮，有日程的日期带标记点 | 主窗口 ① |
+| 日历态 | 点击月份箭头、日期格、今天 | ① 重绘当月网格，选中格高亮，有日程的日期带标记点（标记待后端提供按月查询，见 12.6 节） | 主窗口 ① |
 | 表单态 | 点击「新增」或「修改」 | 弹出 `ui-wireframe-form.svg`，四个字段；日期可直接输入或点「选择」打开 `QCalendarWidget` 浮层 | 表单草图 |
 | 确认态 | 选中后点击「删除」 | 模态对话框，说明将删除哪一条且不可撤销 | 对话框草图（左） |
 | 错误态 | 后端返回校验或写入失败结论 | 提示后端给出的具体原因，并说明下一步能做什么，不暴露堆栈 | 对话框草图（中） |
@@ -151,13 +151,13 @@
 | V-14 | 工程增强 | 新增若干条后退出程序，重新启动 | 数据仍在，说明持久化生效 |
 | V-15 | F-02 | 点日期旁「选择」打开日历浮层，点选某天 | 浮层关闭，日期框回填为标准格式文本，可继续编辑 |
 | V-16 | F-02 | 日期填完全无法识别的内容（如 `明天`）后保存 | 显示后端返回的原因，已填内容保留，可改后重试 |
-| V-17 | 工程增强 | Windows 上 `uv sync` 后启动程序 | 能 `import PySide6`、主窗口显示无文字截断、日历周一开头一致，版本号记录到 screenshots 附录 |
+| V-17 | 工程增强 | Windows 上 `uv sync` 后启动程序 | 能 `import PySide6`、主窗口显示无文字截断、日历周一开头一致，版本号记录到 screenshots 附录。**2026-10-16 已跑通**：PySide6 6.12.0 / Qt 6.12.0 on Python 3.12.14，版本号见 `docs/screenshots/README.md` 第 1 节 |
 
 V-10 与 V-11 是界面层的**核心断言**，必须用测试替身验证「服务调用次数为 0」，不能只靠肉眼看列表没变。V-04 与 V-16 是一组对照：**同一个字段，能识别的写法直接通过，不能识别的才报错**——两条都要跑，才能证明界面确实没有在前端先行拦截。
 
 ## 7. 与实现文件的映射
 
-后续 P09、P10 落地时，本文各节对应到这些文件。P09 的四个非 GUI 模块已于 2026-10-15 落地（详见第 10 节），下表标注了各自的当前状态：
+后续 P09、P10 落地时，本文各节对应到这些文件。P09 的四个非 GUI 模块与 P10 的五个 Qt 模块均已于 2026-10-16 落地（详见第 10、12 节），下表是当前状态：
 
 | 文件（未来路径） | 主要 Qt 类型 | 承接本文 | 状态 |
 | --- | --- | --- | --- |
@@ -165,10 +165,13 @@ V-10 与 V-11 是界面层的**核心断言**，必须用测试替身验证「�
 | `ui/ports.py` | （无控件，Protocol） | 界面与外部世界的三个端口 | 已落地 |
 | `ui/presenters.py` | （无控件，纯函数） | 显示格式化、条数文案、错误到提示的映射 | 已落地 |
 | `ui/controller.py` | （无控件，纯协调） | 第 5 节全部：选中态、调用用例、错误转提示 | 已落地 |
-| `ui/app.py` | `QApplication`、`QMainWindow`、`QToolBar`、`QStatusBar` | 第 3 节布局与事件接线；进程唯一的 `QApplication` 实例在本模块的 `main()` 中创建 | P10 |
-| `ui/calendar_view.py` | `QCalendarWidget` | 第 3 节 ①，含标记绘制与周一起始 | P10 |
-| `ui/date_picker.py` | `QCalendarWidget` 包一层浮层 | 第 5.1 节日期选择浮层；与 `calendar_view.py` 共用同一个「日期标记」绘制函数 | P10 |
-| `ui/schedule_form.py` | `QDialog`、`QLineEdit`、`QTextEdit` | 第 4 节表单态，新增与修改共用 | P10 |
+| `ui/main_window.py` | `QMainWindow`、`QToolBar`、`QStatusBar`、`QTableWidget`、`QLabel` | 第 3 节布局与事件接线；`MainViewPort` 的唯一 Qt 实现 | 已落地 |
+| `ui/app.py` | `QApplication` | 程序入口与依赖注入；进程唯一的 `QApplication` 实例在本模块的 `main()` 中创建 | 已落地 |
+| `ui/calendar_view.py` | `QCalendarWidget` | 第 3 节 ①，含周一起始与「回到今天」 | 已落地 |
+| `ui/date_picker.py` | `QCalendarWidget` 包一层浮层 | 第 5.1 节日期选择浮层 | 已落地 |
+| `ui/schedule_form.py` | `QDialog`、`QLineEdit`、`QTextEdit` | 第 4 节表单态，新增与修改共用 | 已落地 |
+
+最初设计的映射里没有 `main_window.py`，实现时把它拆了出来：`app.py` 只负责进程级的事（创建 `QApplication`、注入服务），窗口本身与 `MainViewPort` 的实现放在 `main_window.py`。这样"入口"与"窗口"可以各自替换——例如将来做 CLI 前端时，`app.py` 换成 `cli_app.py`，而 `main_window.py` 原样留着。
 
 分层约束（违反即视为设计错误）：`ui` 不 import `sqlite3`，不拼 SQL；**领域层不 import `PySide6`**（也不 import `tkinter`——换框架不改这条）；服务层不弹窗；**模块导入时不得创建 `QApplication`、不得弹窗、不得连接数据库**（这是最容易踩的一条：pytest 收集阶段一旦触发窗口创建，在没有显示服务的环境里会直接挂掉，自动化测试连收集都过不去）。
 
@@ -258,8 +261,30 @@ T-02 与 T-04 会影响 V-03、V-04、V-16 的预期文案，拍板后回来改�
 | `tests/unit/ui_fakes.py` | 已落地 | UI 自己的测试替身：假服务（记录调用）+ 假窗口（记录输出） |
 | `tests/unit/test_presenters.py` | 已落地 | 文案与错误映射的穷举 |
 | `tests/unit/test_controller.py` | 已落地 | V-01~V-16 中可自动化部分的断言，重点是调用次数 |
-| `tests/unit/test_ui_layering.py` | 已落地 | 用 AST 扫描源码，禁止 `ui` 包 import `PySide6` / `tkinter` / `sqlite3` |
-| `ui/app.py`、`calendar_view.py`、`date_picker.py`、`schedule_form.py` | **未落地** | P10，需要先把 PySide6 装起来（T-01 定论后才能动） |
+| `tests/unit/test_ui_layering.py` | 已落地 | 用 AST 扫描源码，**按角色**限制引入：与呈现无关的五个模块不许碰 `PySide6` / `tkinter` / `sqlite3`，窗口适配器允许 `PySide6` 但仍不许碰 `tkinter` / `sqlite3`；另有断言保证新增模块必须被显式归类，不允许漏管 |
+| `src/schedule_management/ui/app.py` | 已落地 | 进程唯一的 `QApplication`（只在 `main()` 里创建一次）+ 依赖注入；`QMainWindow` 本体的组装在 `main_window.py` |
+| `src/schedule_management/ui/main_window.py` | 已落地 | 实现 `MainViewPort`：顶部工具栏六按钮、左日历、右列表、底部状态与选中提示 |
+| `src/schedule_management/ui/calendar_view.py` | 已落地 | `QCalendarWidget`，周一为周起始 + 有日程的日期标记 + 跨月前后缀 |
+| `src/schedule_management/ui/date_picker.py` | 已落地 | 把 `QCalendarWidget` 包成浮层，点选后回填 `YYYY-MM-DD` 文本到 `QLineEdit` |
+| `src/schedule_management/ui/schedule_form.py` | 已落地 | `QDialog`，新增与修改共用；日期用 `QLineEdit` + 「选择」按钮，**不做任何日期校验** |
+| `src/schedule_management/dev_stub_service.py` | 已落地 | 开发替身服务（见 10.5），让窗口在真后端到位之前就能真的跑起来 |
+| `scripts/shoot_ui.py` | 已落地 | 离屏/窗下跑真窗口，产出截图并断言 V 清单里可自动化的部分 |
+| `tests/unit/test_dev_stub_service.py` | 已落地 | 替身服务自身的边界用例（它现在扛着"界面能跑"的责任） |
+
+第 10.1 节这张表在 P10 落地后填满了。P09 先写非 GUI 的四块、P10 再补窗口适配器，顺序是有意的：**先有交互规则，再有承载交互的控件**，后者可以换（第 11 节），前者不能抖。
+
+### 10.1.1 守卫为什么改成按角色分档
+
+P09 阶段守卫是一条一刀切的规则（`ui` 包不许 import 任何 GUI 运行库）。P10 要写窗口，这条直接把它拦死了，于是改为两档：
+
+| 类别 | 模块 | 禁止引入 |
+| --- | --- | --- |
+| 与呈现无关 | `__init__`、`view_models`、`ports`、`presenters`、`controller` | `PySide6`、`tkinter`、`sqlite3` |
+| 窗口适配器 | `app`、`main_window`、`calendar_view`、`date_picker`、`schedule_form` | `tkinter`、`sqlite3`（**允许 `PySide6`**） |
+
+两档之间还有一条元断言：**`ui` 包里每个模块都必须出现在上面某一档**。新增模块忘了归类会直接测试失败，而不是悄悄获得"什么都能 import"的自由。
+
+注意窗口适配器仍然不许碰 `sqlite3`——分工红线不因为"这是前端"而放松；也仍然不许碰 `tkinter`（同为 GUI 运行库，同为兼职就能避免的东西）。
 
 **为什么 `controller.py` 与 `presenters.py` 不许碰 Qt。** 这两块是全部交互规则所在地，一旦 import 了 `PySide6`，pytest 收集阶段就会在没有显示服务的环境里挂掉，界面逻辑也就没法脱离界面被测试。第 7 节那条约束现在有测试兜底了：谁手滑 import 了 Qt，`tests/unit/test_ui_layering.py` 会直接失败，并且报错信息会写清原因。
 
@@ -307,7 +332,41 @@ delete_schedule(schedule_id: str) -> None
 | V-13（部分） | `test_unexpected_exception_gives_generic_hint_only`、`test_failed_refresh_keeps_last_good_rows` | 未预期异常只给通用提示且不泄露技术细节；刷新失败保留上一次的数据 |
 | F-06（部分） | `test_storage_error_points_at_the_data_file` | 存储类错误指向数据文件并给出下一步 |
 
-跑法：`uv run pytest tests/unit -v`；类型验证：`uv run mypy src tests`（当前 11 个文件全绿）。其余带界面外观的部分（V-07 跨月闰年、V-15 浮层回填、V-17 Windows 启动）只能留在 P10 之后人工验收。
+跑法：`uv run pytest tests/unit -v`；类型验证：`uv run mypy src tests`（当前 **18 个源文件**全绿，共 **117 项**测试通过）。
+
+### 10.5 开发替身服务：让界面在后端之前就能跑
+
+`src/schedule_management/dev_stub_service.py` 是**开发替身**，不是真存储。它提供两个东西：
+
+1. 一份实现 `ScheduleServicePort` 的内存服务（`InMemoryScheduleService`），增删查改都对 `dict` 操作；
+2. 一份示例日程种子（`seed_demo_data`），让首次打开界面就有东西可看，而不是一张空表。
+
+**为什么需要它。** 后端三层由 zch 与 xhy 负责，`contracts.md` 也还没定稿。若按"后端就位再验界面"的顺序排队，
+界面就会一直停在纸面上：既拿不到截图，也无法做第 6 节那份人工验收，最终把风险全压到最后几天。有了替身，
+界面现在是**能双击打开、能新增、能删除、能截图**的程序，验收清单可以先跑一遍。
+
+**它替不了什么。** 一律明确标注：替身**验不了持久化**（V-14），也验不了 xhy 的 SQLite 约束（唯一键、并发、事务）。
+它验的是"界面与交互规则对不对"，不替代"数据存不存在"。
+
+**它对 xhy 反而有用。** 33 项替身测试（`tests/unit/test_dev_stub_service.py`）把边缘行为写死了——
+空标题怎么处理、删不存在的记录怎么报、同一天日程如何排序。这些正好是 SQLite 真实现要照着对齐的规格，
+他不必从零猜。
+
+**下线方式。** 真服务落地后，只改入口那一行注入即可：`ScheduleController` 依赖的是 `ScheduleServicePort` 协议
+而不是具体类，替身与真服务对协议的实现由 `mypy` 证明等价。
+
+### 10.6 P10 已落地，验收覆盖面随之扩大
+
+`scripts/shoot_ui.py` 会开真正的窗口、截真正的图，并把不需要人眼判断的部分断言掉（当前 **8 项全过**）：
+V-01 启动显示当天、V-01 六按钮齐备、V-05 选中同步、V-06 空状态、V-07 闰年可构造、V-16 不可识别日期原样离开表单。
+逐条实测值与仍然只能人工验的部分见 **12.4 节**，这里不重复。
+
+两点必须说清：
+
+- **必须在桌面会话里跑**：离屏模式下 `QFontDatabase` 返回 0 个字体，中文会渲染成方块，那种截图没有验收价值。
+- **替身验不了持久化**：V-14 在这套环境里**必然验不过**，它要等 xhy 的 SQLite。程序能开能删，不等于数据存得住。
+
+截图、环境版本（Python 3.12.14 / PySide6 6.12.0 / Qt 6.12.0）与复现命令归档在 **`docs/screenshots/README.md`**，V-17 要求的版本号就记在那里。
 
 ## 11. 目标平台与前端可替换性
 
@@ -342,7 +401,7 @@ delete_schedule(schedule_id: str) -> None
 | 动作 | 内容 |
 | --- | --- |
 | 要新增 | `schedule_management/cli/`（或 `ui/cli_main.py`）：一个实现 `MainViewPort` 的 `CliMainView`，加一个 `main()`，把 `ScheduleServicePort` 的真实现与 `CliMainView` 一起塞进 `ScheduleController` |
-| **不用改** | `view_models.py`、`ports.py`、`presenters.py`、`controller.py` 四个文件；后端三层的任何文件；`tests/unit/` 的 59 项测试（它们本就跑在无窗口环境里） |
+| **不用改** | `view_models.py`、`ports.py`、`presenters.py`、`controller.py` 四个文件；后端三层的任何文件；`tests/unit/` 里针对这四块的测试（当前 108 项，本就跑在无窗口环境里） |
 | 不用删 | 桌面端的 `ui/app.py` 等——两种前端可以共存，靠入口区分 |
 
 WebUI 同理：新增一个 `web/` 包，在请求处理里适配 `MainViewPort` 即可。**交互规则只有一份**，不存在「桌面版规则」和「网页版规则」两套。
@@ -358,3 +417,82 @@ WebUI 同理：新增一个 `web/` 包，在请求处理里适配 `MainViewPort`
 - **现在不写 CLI 前端代码，也不引入任何 Web 框架**。预留的是接缝，不是提前把三种前端都实现一遍——那样只会多出两个没人用的半成品。
 - P10 的唯一额外要求：`ui/app.py` 只做 `MainViewPort` 的适配，**交互规则一律留在 `controller.py`**，不因为「窗口里写起来更顺手」就搬进去。
 - 可验收的判据（随时可查）：**若要把交互规则搬到另一个前端，需要改动 `controller.py` 或 `presenters.py`，即判定为耦合，须回头修接缝**；只需新增一个 `MainViewPort` 实现即视为接缝有效。这条判据不看主观感受，看改哪些文件。
+
+## 12. P10 落地说明（2026-10-16）
+
+图形界面从文档变成了能打开的程序。这一节记录它怎么跑、替身服务是什么、
+哪些验收项真的验过了、以及哪些**没验过**——最后一项比前几项更需要写清楚。
+
+### 12.1 现在能真的跑起来
+
+```bash
+uv sync                                   # 首次安装 PySide6（本机实测约 1 分钟，含缓存）
+uv run python -m schedule_management.ui.app   # 直接启动
+uv run python scripts/shoot_ui.py             # 跑一遍场景并产出截图
+```
+
+`pyproject.toml` 的 `dependencies` 从空列表改为 `PySide6>=6.11.2,<7.0`，与 1.1 节的版本策略一致。**声明依赖不等于把二进制整包入库**：`src/lib/` 那个课程合规问题（T-01）仍未拍板，两者是两件事。
+
+程序启动后落到当天，左侧月历（周一起始）、右侧当日列表、顶部六个按钮、底部状态栏，与第 3 节的四段式一致。
+
+### 12.2 开发替身服务：`dev_stub_service.py`
+
+真服务还没落地，界面要跑起来就得有个东西顶着。这个文件就是**为了不让人闲着**而写的替身，边界说清楚：
+
+| 它做了什么 | 边界 |
+| --- | --- |
+| 日期时间的宽容解析（`2026/10/15`、`2026.10.15`、`2026年10月15日`） | 只认分隔符差异，不认 `明天`、`下周三`；最终范围以 `contracts.md` 的 T-02 为准 |
+| 字段校验（标题去空白非空、长度上限） | 上限值是 T-04 的暂定值，不是课程规定 |
+| 增删改查 | **全在内存里，退出即丢** |
+
+三件本属后端的事被它临时做了，所以它**不是** `application/` 或 `infrastructure/` 的替代品，更不是替谁完成作业。真实现到位后，`ui/app.py` 的 `build_service()` 换掉即可，界面与 controller 一行不改——这正是第 11 节那个接缝的第一次真实检验。
+
+### 12.3 分层守卫按角色分层
+
+P10 引入了真正 import `PySide6` 的窗口模块，原先"`ui/*.py` 一律不许碰 GUI"的守卫会连自己的实现一起拦死，因此改成按角色判定（`tests/unit/test_ui_layering.py`）：
+
+| 名单 | 模块 | 禁止 import |
+| --- | --- | --- |
+| 与呈现无关 | `__init__`、`view_models`、`ports`、`presenters`、`controller` | `PySide6`、`tkinter`、`sqlite3` |
+| 窗口适配器 | `app`、`main_window`、`calendar_view`、`date_picker`、`schedule_form` | `tkinter`、`sqlite3`（**允许 `PySide6`**） |
+
+两条兜底：`sqlite3` 对**全包**禁止（界面不碰存储这条红线不因为"它是窗口"就放宽）；新增模块若没有被登记进任何一张名单，守卫会失败——宁可逼人补一行登记，也不让模块悄悄溜过去。
+
+### 12.4 本轮实测结果（含**未验项**）
+
+`uv run python scripts/shoot_ui.py` 在真窗口下跑一遍：**8 项全通过**。
+
+| 验收项 | 状态 | 依据 |
+| --- | --- | --- |
+| V-01 启动显示当天、工具栏齐全 | **已验** | 表格 3 行；六个按钮名称逐一断言 |
+| V-05 选中行同步文案 | **已验** | 选中文案变为「已选中：08:30 晨读英语」 |
+| V-06 空状态不白板 | **已验** | 空日期显示引导语与「共 0 条」 |
+| V-16 不可识别日期原样离开表单 | **已验** | 日期框填 `明天`，`draft()` 原样交出，界面不拦 |
+| V-07 跨月与闰年 | **半自动** | 2028-02 截图 + 探测脚本断言「29 天且可选」，灰显仍需人眼 |
+| V-10 / V-11 未选中、取消删除不调服务 | **已验** | 单测断言 `delete` 调用 0 次（见 10.4 节） |
+| V-15 浮层回填 | **未验** | 模态浮层难以在脚本里点，留人工 |
+| V-02 / V-03 / V-08 / V-09 / V-12 / V-13 | **未验** | 需要驱动模态对话框，留人工按第 6 节清单跑 |
+| **V-14 重启后数据仍在** | **必然验不过** | 替身是内存版，退出即丢。**这条要等 xhy 的 SQLite，现在不能算完成** |
+
+请特别注意最后一行：程序能开、能增能删，**不等于数据能存住**。这正是 `AGENTS.md` 里那条"门禁全绿 ≠ 功能已实现"在界面层的版本——能跑起来的是界面，持久化那一环还没有东西。
+
+### 12.5 截图清单
+
+`docs/screenshots/` 下由脚本产出，可直接用作设计文档与 PPT 素材：
+
+| 文件 | 内容 |
+| --- | --- |
+| `main-window.png` | 主窗口：当天 3 条日程 |
+| `main-window-selected.png` | 选中一行后的状态（选中文案 + 工具栏） |
+| `empty-state.png` | 空状态：某天没有日程 |
+| `calendar-leap-2028-02.png` | 2028 年 2 月，供人眼确认闰月与灰显 |
+| `form-dialog.png` | 新增表单：四字段 + 日期「选择」按钮，日期框内是 `明天` |
+
+截图必须在**有桌面的 Windows 上**跑：离屏平台（`QT_QPA_PLATFORM=offscreen`）在这台机器上 `QFontDatabase.families()` 返回 0 个字体，抓出来的中文全是方块——图能生成但没法用。这也是"GUI 只做 Windows"的一个具体后果。
+
+### 12.6 本轮明确没做的事
+
+- **日历上给有日程的日期加标记**。`calendar_view.mark_days()` 已经写好，但标记需要"这个月哪些日期有日程"的数据，那要求后端提供按月查询（建议 `list_days_with_schedules(month)`）。窗口绕开 controller 自己去遍历查询会破坏第 11 节的接缝，所以宁可先留白。**这是端口待扩展项，需与 zch 确认后写进契约。**
+- 键盘快捷键、右键菜单、拖拽调整等增强交互——不属于课程要求的六个状态。
+- 真实持久化：见 12.4 节最后一行。
+- 日期时间解析的"正式版本"：替身里那份是临时最小实现，T-02 拍板后由后端接管。

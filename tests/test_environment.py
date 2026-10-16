@@ -22,8 +22,10 @@ import pytest
 # 与 pyproject.toml 的 requires-python 和仓库根目录 .python-version 保持一致。
 MINIMUM_PYTHON: tuple[int, int] = (3, 12)
 
-# 本项目计划使用的标准库能力：GUI、持久化、日期时间处理、日历网格。
-REQUIRED_STDLIB_MODULES = ("tkinter", "sqlite3", "datetime", "calendar")
+# 本项目使用的标准库能力：持久化、日期时间处理、日历网格。
+# GUI 已改用第三方 PySide6（见 pyproject.toml 的 dependencies），
+# 因此这里不再断言 tkinter —— 那条断言会让人以为项目还在用 Tk。
+REQUIRED_STDLIB_MODULES = ("sqlite3", "datetime", "calendar")
 
 
 def test_python_version_meets_requirement() -> None:
@@ -48,6 +50,24 @@ def test_required_stdlib_module_importable(module_name: str) -> None:
         importlib.import_module(module_name)
     except ImportError as exc:
         pytest.fail(f"当前解释器无法导入 {module_name}：{exc}（解释器：{sys.executable}）")
+
+
+def test_gui_framework_is_importable() -> None:
+    """GUI 框架必须真的装上：图形界面是项目的一部分，不是可选装饰。
+
+    这条替代了原先的 tkinter 断言。界面选型已定为 PySide6
+    （见 `docs/figures/ui-interaction.md` 第 1.1 节），因此"GUI 能不能用"
+    这件事要按新选型来验；漏装依赖时失败信息要能直接指出该跑 uv sync。
+    """
+    try:
+        import PySide6
+    except ImportError as exc:
+        pytest.fail(f"PySide6 无法导入：{exc}。请先运行 uv sync 安装运行时依赖。")
+
+    assert PySide6.__version__.startswith("6."), (
+        f"GUI 框架版本超出预期：{PySide6.__version__}，"
+        "依赖区间固定为 >=6.11.2,<7.0，升级请走单独的评审。"
+    )
 
 
 def test_sqlite3_can_open_in_memory_database() -> None:

@@ -20,7 +20,7 @@
 ## 非功能与实现提示
 
 - 使用 Python 实现，不改变题目范围。
-- GUI 可在实现阶段选择 Tkinter 或 PyQt，并记录技术选型理由。
+- GUI 框架已定为 **PySide6（Qt for Python，LGPL-3.0）**，选型理由记录在 `docs/figures/ui-interaction.md` 1.1 节：原生控件呈现效果优于 Tkinter；相比 PyQt，LGPL 在非 GPL 场景下无需商业授权。课程要求里的「Tkinter 或 PyQt」是举例而非限定。
 - 使用 `datetime` 处理日期和时间，保证比较、显示和输入校验一致。
 - 界面应简洁清晰，操作结果应容易理解。
 - 可使用列表、字典或后续确定的持久化方式组织日程数据。
