@@ -7,7 +7,6 @@ from schedule_management.domain.schedule import Schedule
 
 
 class InMemoryScheduleRepository:
-
     def __init__(self) -> None:
         self._store: dict[str, Schedule] = {}
 

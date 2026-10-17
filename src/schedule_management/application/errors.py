@@ -2,7 +2,11 @@
 
 
 class ScheduleNotFoundError(Exception):
-    pass
+    """按 id 找不到日程。
+
+    服务层在仓储的 ``update()`` / ``delete()`` 返回 ``False`` 时抛出，
+    界面据此提示“记录可能已被删除”。
+    """
 
 
 class StorageError(Exception):
