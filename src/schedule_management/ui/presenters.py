@@ -11,10 +11,12 @@
 from __future__ import annotations
 
 import datetime as dt
+import importlib
 from collections.abc import Sequence
+from functools import cache
 
 from .ports import ScheduleLike
-from .view_models import ScheduleRow
+from .view_models import FormMode, ScheduleRow
 
 DATE_FORMAT = "%Y-%m-%d"
 TIME_FORMAT = "%H:%M"
@@ -25,10 +27,11 @@ UNEXPECTED_CATEGORY = "Unexpected"
 #: 星期几的中文简称，索引与 `date.weekday()`（周一为 0）对齐。
 _WEEKDAY_NAMES = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
 
-#: 已知的可解释错误 → 提示标题。键是**异常类名**，原因见 `error_category`。
+#: 已知的可解释错误 → 提示标题。键是 `error_category` 给出的**分类名**。
 _ERROR_HEADLINES = {
     "ValidationError": "无法保存",
     "ScheduleNotFound": "没有找到这条日程",
+    "Duplicate": "这条日程已经存在",
     "StorageError": "数据没能写入磁盘",
 }
 
@@ -39,8 +42,26 @@ _ERROR_SUGGESTIONS = {
         "已经填写的内容都还在，改完可以直接再试一次。"
     ),
     "ScheduleNotFound": "它可能已经被删除了。点「刷新」看看最新的列表。",
+    "Duplicate": (
+        "换一个时间或先刷新列表，确认是不是已经保存过。"
+        "已经填写的内容都还在，确认后可以直接再试一次。"
+    ),
     "StorageError": "数据文件可能不可写或已损坏。已填写的内容没有丢失，处理好之后可以再试。",
 }
+
+#: 真异常类不可用时的兜底：异常类名 → 分类名。
+#:
+#: `ScheduleNotFound` 是开发替身与旧契约用的名字，`ScheduleNotFoundError` 是
+#: 应用层落地后的真名，两者必须归到同一类；`DuplicateScheduleError` 是
+#: `StorageError` 的子类，查表时按 MRO 从子类往父类走，因此会先命中 Duplicate。
+_CATEGORY_BY_CLASS_NAME = {
+    "ValidationError": "ValidationError",
+    "ScheduleNotFound": "ScheduleNotFound",
+    "ScheduleNotFoundError": "ScheduleNotFound",
+    "DuplicateScheduleError": "Duplicate",
+    "StorageError": "StorageError",
+}
+
 
 _UNEXPECTED_HEADLINE = "操作没有完成"
 _UNEXPECTED_SUGGESTION = (
@@ -105,10 +126,17 @@ def refreshed_text(total: int) -> str:
     return f"已刷新：{count_text(total)}"
 
 
-def saved_text(mode: str, title: str) -> str:
-    """写入成功后的状态栏文案。`title` 用后端返回的，不用界面原样输入。"""
-    verb = "已新增" if mode == "create" else "已修改"
-    return f"{verb}「{title}」"
+def saved_text(mode: FormMode, title: str) -> str:
+    """写入成功后的状态栏文案。`title` 用后端返回的，不用界面原样输入。
+
+    `mode` 只接受表单模型定义的两个值；拼错时直接报错，不能静默显示成
+    “已修改”——那会让“新增成功”与“修改成功”在状态栏上无法区分。
+    """
+    if mode == "create":
+        return f"已新增「{title}」"
+    if mode == "edit":
+        return f"已修改「{title}」"
+    raise ValueError(f"未知的表单模式：{mode!r}")
 
 
 def deleted_text(title: str) -> str:
@@ -135,18 +163,63 @@ def cancelled_text() -> str:
     return "已取消，没有做任何改动"
 
 
+_RealErrorTypes = tuple[
+    type[BaseException], type[BaseException], type[BaseException], type[BaseException]
+]
+
+
+@cache
+def _real_error_types() -> _RealErrorTypes | None:
+    """延迟加载真实后端的异常类；这些模块还没落地时返回 `None`。
+
+    用 `importlib` 而不是函数内 `import`：PR #5 所在分支还没有 `application` /
+    `domain` 包，静态 import 即使包在 `try/except ImportError` 里，也会让
+    `mypy src` 直接报 `import-not-found`。模块名仍是显式写死的，不存在猜路径。
+
+    返回顺序即判定顺序：`DuplicateScheduleError` 必须排在它的基类
+    `StorageError` 前面。
+    """
+    try:
+        application_errors = importlib.import_module("schedule_management.application.errors")
+        domain_errors = importlib.import_module("schedule_management.domain.errors")
+    except ImportError:
+        return None
+
+    try:
+        return (
+            domain_errors.ValidationError,
+            application_errors.DuplicateScheduleError,
+            application_errors.ScheduleNotFoundError,
+            application_errors.StorageError,
+        )
+    except AttributeError:
+        return None
+
+
 def error_category(exc: BaseException) -> str:
     """把异常归到一类可解释的错误；认不出来就返回 `"Unexpected"`。
 
-    这里按**类名**判定而不是 `isinstance`，是因为 `domain/errors.py` 与
-    `application/errors.py` 还没有落地（P05 / P07 归 zch），界面不能在导入期
-    依赖它们，否则 import 一断整套 UI 测试就跑不起来。
-
-    待真异常类可用后，把函数体换成 isinstance 判定即可，调用方无需改动。
+    真异常类可用时优先用 `isinstance` 判定，类名不再参与；真类不可用（本分支
+    尚未合入后端模块），或异常来自刻意复制契约名字的开发替身时，按 MRO 里的
+    类名兜底。兜底同样从子类往父类查，因此 `DuplicateScheduleError` 会先命中
+    `Duplicate`，不会被它的基类 `StorageError` 抢走。
     """
-    name = type(exc).__name__
-    if name in _ERROR_HEADLINES:
-        return name
+    real_types = _real_error_types()
+    if real_types is not None:
+        validation_error, duplicate_error, not_found_error, storage_error = real_types
+        if isinstance(exc, validation_error):
+            return "ValidationError"
+        if isinstance(exc, duplicate_error):
+            return "Duplicate"
+        if isinstance(exc, not_found_error):
+            return "ScheduleNotFound"
+        if isinstance(exc, storage_error):
+            return "StorageError"
+
+    for cls in type(exc).__mro__:
+        category = _CATEGORY_BY_CLASS_NAME.get(cls.__name__)
+        if category is not None:
+            return category
     return UNEXPECTED_CATEGORY
 
 

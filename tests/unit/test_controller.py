@@ -12,8 +12,13 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 
-from ui_fakes import (
+import pytest
+
+from schedule_management.ui.controller import ScheduleController
+from schedule_management.ui.view_models import ScheduleDraft
+from tests.unit.ui_fakes import (
     FakeMainView,
     FakeScheduleService,
     ScheduleNotFound,
@@ -22,9 +27,6 @@ from ui_fakes import (
     UnexpectedBoom,
     ValidationError,
 )
-
-from schedule_management.ui.controller import ScheduleController
-from schedule_management.ui.view_models import ScheduleDraft
 
 TODAY = dt.date(2026, 10, 15)
 TOMORROW = dt.date(2026, 10, 16)
@@ -321,6 +323,13 @@ def test_storage_error_points_at_the_data_file() -> None:
     assert "再试" in message, "异常提示必须带下一步，不能只说失败"
 
 
+def test_refresh_returns_true_on_success() -> None:
+    controller, _service, _view = build_controller()
+    controller.start()
+
+    assert controller.refresh() is True
+
+
 def test_failed_refresh_keeps_last_good_rows() -> None:
     service = FakeScheduleService((ITEM_TODAY,))
     controller, service, view = build_controller(service)
@@ -328,8 +337,8 @@ def test_failed_refresh_keeps_last_good_rows() -> None:
     good_rows = view.last_rows
 
     service.fail_next("list", StorageError("连接中断"))
-    controller.refresh()
 
+    assert controller.refresh() is False, "查询失败必须让调用方知道，不能假装刷新成功"
     assert view.last_rows == good_rows, "刷新失败要保留上一次的数据，不能清空列表"
     assert view.errors[-1][0] == "数据没能写入磁盘"
 
@@ -337,7 +346,20 @@ def test_failed_refresh_keeps_last_good_rows() -> None:
 def test_refresh_before_start_does_nothing() -> None:
     controller, service, _view = build_controller()
 
-    controller.refresh()
-
+    assert controller.refresh() is False, "尚未 start 时没有筛选日期，只能返回失败"
     assert service.call_count == 0, "没有筛选日期时不该去查库"
     assert controller.current_day is None
+
+
+def test_storage_error_cause_is_logged_as_warning(caplog: pytest.LogCaptureFixture) -> None:
+    """已知的 StorageError 也要把真实原因（sqlite 锁、磁盘满等）留在日志里。"""
+    cause = OSError("磁盘已满 /dev/sda1")
+    service = FakeScheduleService(list_error=StorageError("读取日程失败", cause=cause))
+    controller, _service, _view = build_controller(service)
+
+    with caplog.at_level(logging.WARNING, logger="schedule_management.ui.controller"):
+        controller.start()
+
+    warnings = [record for record in caplog.records if record.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "磁盘已满" in warnings[0].getMessage()

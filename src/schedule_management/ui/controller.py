@@ -82,28 +82,30 @@ class ScheduleController:
         self._selected_id = None
         self.refresh()
 
-    def refresh(self) -> None:
+    def refresh(self) -> bool:
         """重查当前筛选日期并整体重绘列表。
 
         查询失败不向上抛：服务抛什么都翻译成提示，界面保留上一次的样子，
-        不做"假装成功"的事。
+        不做"假装成功"的事。返回值告诉调用方这次到底成没成：成功 `True`，
+        查询失败或尚未 `start()`（没有筛选日期）都是 `False`。
         """
         day = self._current_day
         if day is None:
-            return
+            return False
 
         try:
             rows = presenters.to_rows(self._service.list_schedules(day))
         except Exception as exc:  # 后端异常一律转为界面提示，不向上传播
             headline, message = self._describe(exc, "查询日程")
             self._view.show_error(headline, message)
-            return
+            return False
 
         self._rows = rows
         self._view.show_rows(rows)
         self._view.show_count(presenters.count_text(len(rows)))
         self._sync_selection()
         self._view.show_status(presenters.ready_text(len(rows)))
+        return True
 
     def select_row(self, schedule_id: str | None) -> None:
         """记录用户在列表里点了哪一行。`None` 表示点到了空白处。"""
@@ -261,7 +263,14 @@ class ScheduleController:
         """记录诊断信息并把异常转成 `(标题, 正文)`。
 
         认不出来的异常要留证据（记日志）但不甩给用户；认得出的交给 presenters 翻译。
+        存储类错误虽然对用户是"已知"的，真正的 sqlite 原因在 `StorageError.cause`
+        里，必须单独记一条 warning，否则锁表、磁盘满、权限问题在日志里完全消失。
         """
-        if presenters.error_category(exc) == presenters.UNEXPECTED_CATEGORY:
+        category = presenters.error_category(exc)
+        if category == presenters.UNEXPECTED_CATEGORY:
             _LOGGER.exception("执行%s时出现未预期的异常", action, exc_info=exc)
+        elif category == "StorageError":
+            cause = getattr(exc, "cause", None)
+            if cause is not None:
+                _LOGGER.warning("执行%s时存储层报错：%s", action, cause)
         return presenters.describe_error(exc)

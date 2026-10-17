@@ -1,7 +1,7 @@
 """图形界面包。
 
 本包只放两样东西：**不含控件的纯逻辑**（controller、presenters、端口与视图模型）
-和**将来才会写的 Qt 窗口代码**（app.py 等）。两者的分界线写在
+和**已经落地的 Qt 窗口代码**（app.py 等）。两者的分界线写在
 `docs/figures/ui-interaction.md` 第 7 节，核心约定是：
 
 - controller 与 presenters 不得 import `PySide6`，也不得 import `tkinter`——

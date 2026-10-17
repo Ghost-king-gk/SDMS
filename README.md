@@ -9,7 +9,7 @@
 
 ## 当前状态
 
-骨架之外已经落地的是**界面层**：不与 GUI 运行库耦合的那部分（`view_models` / `ports` / `presenters` / `controller`，59 项单测）和 PySide6 窗口实现（`app` / `main_window` / `calendar_view` / `date_picker` / `schedule_form`）都已完成，程序能打开、能增删查改、能截图。
+骨架之外已经落地的是**界面层**：不与 GUI 运行库耦合的那部分（`view_models` / `ports` / `presenters` / `controller`，42 项单测）和 PySide6 窗口实现（`app` / `main_window` / `calendar_view` / `date_picker` / `schedule_form`）都已完成，程序能打开、能增删查改、能截图。
 
 尚未实现的部分同样要写清楚，避免误导：
 

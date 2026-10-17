@@ -8,19 +8,21 @@
 from __future__ import annotations
 
 import datetime as dt
+from typing import cast
 
 import pytest
-from ui_fakes import (
+
+from schedule_management.ui import presenters
+from schedule_management.ui.ports import ScheduleLike
+from schedule_management.ui.view_models import FormMode, ScheduleRow
+from tests.unit.ui_fakes import (
+    DuplicateScheduleError,
     ScheduleNotFound,
     StorageError,
     StubSchedule,
     UnexpectedBoom,
     ValidationError,
 )
-
-from schedule_management.ui import presenters
-from schedule_management.ui.ports import ScheduleLike
-from schedule_management.ui.view_models import ScheduleRow
 
 A_DAY = dt.date(2026, 10, 15)
 A_TIME = dt.time(9, 5)
@@ -89,6 +91,12 @@ def test_saved_text_uses_backend_title() -> None:
     assert presenters.saved_text("edit", "买牛奶") == "已修改「买牛奶」"
 
 
+def test_saved_text_rejects_unknown_mode() -> None:
+    """拼错的 mode 不能被静默当成“已修改”，否则状态栏会说反话。"""
+    with pytest.raises(ValueError, match="archive"):
+        presenters.saved_text(cast(FormMode, "archive"), "买牛奶")
+
+
 def test_no_selection_text_is_a_reminder_not_an_error() -> None:
     assert "选中" in presenters.no_selection_text()
 
@@ -97,6 +105,29 @@ def test_error_category_knows_contract_names() -> None:
     assert presenters.error_category(ValidationError("标题不能为空")) == "ValidationError"
     assert presenters.error_category(ScheduleNotFound("id")) == "ScheduleNotFound"
     assert presenters.error_category(StorageError("db")) == "StorageError"
+
+
+def test_duplicate_is_classified_before_its_storage_error_base() -> None:
+    """DuplicateScheduleError 是 StorageError 子类，必须先命中 Duplicate。"""
+    exc = DuplicateScheduleError("2026-10-15 09:30 已经有日程")
+
+    assert isinstance(exc, StorageError), "替身必须继承 StorageError，才能验证判定顺序"
+    assert presenters.error_category(exc) == "Duplicate"
+
+    headline, message = presenters.describe_error(exc)
+    assert headline == "这条日程已经存在"
+    assert "换一个时间或先刷新列表，确认是不是已经保存过" in message
+
+
+def test_real_backend_error_classes_are_recognized() -> None:
+    """真异常类落地后（PR #6 合流）按 isinstance 分类；本分支单独跑时跳过。"""
+    errors = pytest.importorskip("schedule_management.application.errors")
+    domain_errors = pytest.importorskip("schedule_management.domain.errors")
+
+    assert presenters.error_category(errors.ScheduleNotFoundError("id")) == "ScheduleNotFound"
+    assert presenters.error_category(errors.DuplicateScheduleError("dup")) == "Duplicate"
+    assert presenters.error_category(errors.StorageError("db")) == "StorageError"
+    assert presenters.error_category(domain_errors.ValidationError("bad")) == "ValidationError"
 
 
 def test_error_category_falls_back_for_unknown_types() -> None:

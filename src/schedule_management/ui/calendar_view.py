@@ -28,6 +28,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .ports import TodayProvider
+
 _MARK_BACKGROUND = QColor("#E8F0FE")
 
 
@@ -46,12 +48,21 @@ class CalendarPanel(QWidget):
 
     `day_picked` 只在用户**点了某一天**时发出，翻月不会触发——
     翻月只是看日历，不该顺手把列表查一遍。
+
+    `today` 是注入的“今天”：默认取系统日期，截图脚本可以把它固定成某一天，
+    「回到今天」才不会跳回真实当天。
     """
 
     day_picked = Signal(object)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        today: TodayProvider = dt.date.today,
+    ) -> None:
         super().__init__(parent)
+        self._today = today
         self._calendar = QCalendarWidget(self)
         self._calendar.setFirstDayOfWeek(Qt.DayOfWeek.Monday)
         self._calendar.setGridVisible(True)
@@ -89,7 +100,7 @@ class CalendarPanel(QWidget):
         self._hint.setText(text)
 
     def go_today(self) -> None:
-        today = QDate.currentDate()
+        today = _to_qdate(self._today())
         self._calendar.setSelectedDate(today)
         self.day_picked.emit(_to_date(today))
 

@@ -4,8 +4,9 @@
 这里放的是界面自己的假服务和假窗口。两者分开，避免出现"UI 想加一个假对象
 就得改别人的文件"这种互相阻塞。
 
-假异常类的名字刻意与契约草案一致（`ValidationError` / `ScheduleNotFound` /
-`StorageError`）：`presenters.error_category` 目前按类名判定，用同名的替身
+假异常类的名字刻意与真实契约一致（`ValidationError` / `ScheduleNotFound` /
+`StorageError`，外加作为 `StorageError` 子类的 `DuplicateScheduleError`）：
+真类尚未落地时 `presenters.error_category` 按类名/MRO 兜底，用同名替身
 才能真正覆盖到"已知错误走具体文案"这条路径。
 """
 
@@ -27,7 +28,18 @@ class ScheduleNotFound(Exception):  # noqa: N818 - 名字必须与契约草案�
 
 
 class StorageError(Exception):
-    """替身：`application/errors.py` 落地前的同名占位。"""
+    """替身：`application/errors.py` 落地前的同名占位；保留真实类的 `cause`。"""
+
+    def __init__(self, message: str, *, cause: BaseException | None = None) -> None:
+        super().__init__(message)
+        self.cause = cause
+
+
+class DuplicateScheduleError(StorageError):
+    """替身：真实 `DuplicateScheduleError` 是 `StorageError` 的子类。
+
+    分类时必须先判它再判 `StorageError`，否则重复日程会被当成普通存储错误。
+    """
 
 
 class UnexpectedBoom(Exception):  # noqa: N818 - 故意不叫 Error，强调它是意料之外的类型

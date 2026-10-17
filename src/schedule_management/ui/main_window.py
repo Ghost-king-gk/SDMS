@@ -66,7 +66,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("日程管理系统")
         self.resize(920, 600)
 
-        self._calendar = CalendarPanel()
+        self._calendar = CalendarPanel(today=clock)
         self._calendar.setMinimumWidth(320)
         self._day_label = QLabel("")
         self._table = QTableWidget(0, len(_COLUMN_HEADERS))
@@ -221,9 +221,9 @@ class MainWindow(QMainWindow):
         self._controller.request_delete()
 
     def _on_refresh(self) -> None:
-        """手动刷新列表；文案与"启动就绪"区分开，让人知道这次真的查过了。"""
-        self._controller.refresh()
-        self.show_status(presenters.refreshed_text(len(self._controller.rows)))
+        """手动刷新列表；只有查询成功才宣称“已刷新”，失败时保留错误框与旧列表。"""
+        if self._controller.refresh():
+            self.show_status(presenters.refreshed_text(len(self._controller.rows)))
 
     def _on_row_selected(self) -> None:
         self._controller.select_row(self._selected_row_id())
