@@ -325,7 +325,7 @@ git status --short --branch
 | 构建分发文件 | `uv build` | 生成 `.whl` 与 `.tar.gz` |
 | PySide6 可用性 | `uv run python -c "import PySide6; print(PySide6.__version__)"` | 成功，6.12.0（Qt 6.12.0） |
 | 窗口创建与截图 | `uv run python scripts/shoot_ui.py` | 八个场景全通过，截图写入 `docs/screenshots/` |
-| 自动化测试 | `uv run pytest -q` | 界面层单独 `121 passed, 1 skipped`；与存储层+服务层合流后全量 `225 passed` |
+| 自动化测试 | `uv run pytest -q` | 界面层单独 `121 passed, 1 skipped`；与存储层/服务层合流后全量以实际运行为准 |
 | 类型检查 | `uv run mypy src tests` | `Success: no issues found in 20 source files` |
 
 关于这些结果，有一点必须如实说明，不能因为表里全是绿色就当成“功能已完成”：
