@@ -291,7 +291,7 @@ uv run pytest --cov=src --cov-report=term-missing
 
 环境门禁测试的作用：在三人各自的机器上，先把“环境或打包配置不对”和“业务代码不对”区分开。例如缺少 PySide6 时，失败信息会直接指出该跑 `uv sync`；`pyproject.toml` 的 src 布局被改坏时，会失败在导入测试而不是业务测试。路径断言使用 `pathlib` 的层级判断而不是字符串拼接，因此 Windows 的反斜杠也能正确通过。
 
-业务测试已经开始补充：界面层的交互规则（`test_controller.py` 21 项）、文案与错误映射（`test_presenters.py` 21 项）、分层守卫（`test_ui_layering.py` 33 项）、开发替身服务的边界（`test_dev_stub_service.py` 33 项），连同环境门禁共 **117 项**。后端用例待各模块落地后按 `tests/contract/`、`tests/integration/` 补充。GUI 结果与截图归档到 `docs/screenshots/`，环境与操作步骤见该目录下的 `README.md`。
+业务测试已经开始补充：界面层的交互规则（`test_controller.py` 23 项）、文案与错误映射（`test_presenters.py` 24 项）、分层守卫（`test_ui_layering.py` 33 项）、开发替身服务的边界（`test_dev_stub_service.py` 33 项），连同环境门禁 9 项，共 **122 项**。存储层用例见 `tests/contract/`、`tests/integration/` 与 `tests/unit/test_schedule.py`。GUI 结果与截图归档到 `docs/screenshots/`，环境与操作步骤见该目录下的 `README.md`。
 
 判断真实性的原则：如果某次运行显示 `collected 0 items`，那是“没有测试”而不是“测试通过”；测试通过必须有明确的 `N passed` 和退出码 0。
 
@@ -319,18 +319,18 @@ git status --short --branch
 | 依赖同步 | `uv sync --dev --locked` | 14 个包，锁文件无需变更 |
 | 锁文件一致性 | `uv lock --check` | 通过 |
 | 代码规范 | `uv run ruff check .` | `All checks passed!` |
-| 代码格式 | `uv run ruff format --check .` | `37 files already formatted` |
+| 代码格式 | `uv run ruff format --check .` | `40 files already formatted` |
 | 字节码编译 | `uv run python -m compileall -q src tests` | 通过 |
 | 项目包导入 | `uv run python -c "import schedule_management as m; print(m.__file__)"` | 成功，指向 `src/schedule_management/__init__.py` |
 | 构建分发文件 | `uv build` | 生成 `.whl` 与 `.tar.gz` |
 | PySide6 可用性 | `uv run python -c "import PySide6; print(PySide6.__version__)"` | 成功，6.12.0（Qt 6.12.0） |
 | 窗口创建与截图 | `uv run python scripts/shoot_ui.py` | 八个场景全通过，截图写入 `docs/screenshots/` |
-| 自动化测试 | `uv run pytest -q` | `117 passed`，退出码 0 |
-| 类型检查 | `uv run mypy src tests` | `Success: no issues found in 18 source files` |
+| 自动化测试 | `uv run pytest -q` | 界面层单独 `121 passed, 1 skipped`；与存储层+服务层合流后全量 `225 passed` |
+| 类型检查 | `uv run mypy src tests` | `Success: no issues found in 20 source files` |
 
 关于这些结果，有一点必须如实说明，不能因为表里全是绿色就当成“功能已完成”：
 
-- **117 项测试覆盖的是界面层**：交互规则、文案与错误映射、分层守卫、替身服务的边界。它们证明界面交互是对的，**但不证明数据能存住**——持久化没有被测到，因为它还不存在。
+- **122 项测试覆盖的是界面层**：交互规则、文案与错误映射、分层守卫、替身服务的边界。它们证明界面交互是对的，**但不证明数据能存住**——持久化不在界面层测试范围内，由存储层的契约/集成测试覆盖。
 - 同理，`shoot_ui.py` 的八个场景跑在**内存替身**上。窗口正确地显示了 3 条日程，不代表 SQLite 里真的有这 3 条。
 - 后端三层（domain / application / infrastructure）一旦落地，必须补 `tests/contract/` 与 `tests/integration/`，并在真数据上重跑 V-14「重启后数据仍在」。
 

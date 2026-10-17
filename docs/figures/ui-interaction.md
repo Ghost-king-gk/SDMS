@@ -332,7 +332,7 @@ delete_schedule(schedule_id: str) -> None
 | V-13（部分） | `test_unexpected_exception_gives_generic_hint_only`、`test_failed_refresh_keeps_last_good_rows` | 未预期异常只给通用提示且不泄露技术细节；刷新失败保留上一次的数据 |
 | F-06（部分） | `test_storage_error_points_at_the_data_file` | 存储类错误指向数据文件并给出下一步 |
 
-跑法：`uv run pytest tests/unit -v`；类型验证：`uv run mypy src tests`（当前 **18 个源文件**全绿，共 **117 项**测试通过）。
+跑法：`uv run pytest tests/unit -v`；类型验证：`uv run mypy src tests`（当前 **20 个源文件**全绿，共 **122 项**测试；其中 1 项需要后端异常类，合流后执行）。
 
 ### 10.5 开发替身服务：让界面在后端之前就能跑
 
@@ -408,7 +408,7 @@ delete_schedule(schedule_id: str) -> None
 | 动作 | 内容 |
 | --- | --- |
 | 要新增 | `schedule_management/cli/`（或 `ui/cli_main.py`）：一个实现 `MainViewPort` 的 `CliMainView`，加一个 `main()`，把 `ScheduleServicePort` 的真实现与 `CliMainView` 一起塞进 `ScheduleController` |
-| **不用改** | `view_models.py`、`ports.py`、`presenters.py`、`controller.py` 四个文件；后端三层的任何文件；`tests/unit/` 里针对这四块的测试（当前 108 项，本就跑在无窗口环境里） |
+| **不用改** | `view_models.py`、`ports.py`、`presenters.py`、`controller.py` 四个文件；后端三层的任何文件；`tests/unit/` 里针对这四块的测试（当前 113 项，本就跑在无窗口环境里） |
 | 不用删 | 桌面端的 `ui/app.py` 等——两种前端可以共存，靠入口区分 |
 
 WebUI 同理：新增一个 `web/` 包，在请求处理里适配 `MainViewPort` 即可。**交互规则只有一份**，不存在「桌面版规则」和「网页版规则」两套。

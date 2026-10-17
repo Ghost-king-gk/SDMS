@@ -9,7 +9,7 @@
 > `docs/design/contracts.md` 为准；两者冲突时，**以契约为准**，并请在实现时
 > 回来修订本文，避免两份文档各自漂移。
 >
-> **为什么现在写。** 界面已经能跑（P10 已落地，117 项门禁通过），但跑在内存
+> **为什么现在写。** 界面已经能跑（P10 已落地，122 项门禁通过），但跑在内存
 > 替身上：退出即丢，持久化（V-14）必然验不过。这份规格单的目的就是把
 > "照着填"的成本降到最低——每个条目都来自一条已运行的测试，不是口头约定。
 
@@ -212,7 +212,7 @@ CREATE INDEX IF NOT EXISTS idx_schedules_date ON schedules(date);
 
 1. xhy 实现仓储 + zch 实现服务层，按第 2、4 节对照自测；
 2. 在 `ui/app.py` 的 `build_service()` 换入真服务；
-3. 跑 `uv run pytest -q`（界面层 108 项断言此时已用真服务适配器验证一遍）；
+3. 跑 `uv run pytest -q`（界面层 113 项断言此时已用真服务适配器验证一遍）；
 4. 跑 `uv run python scripts/shoot_ui.py`，重点看 V-02、V-12、V-14 三条；
 5. V-14 通过后，把 `ui-interaction.md` 第 6 节里标注"依赖 SQLite"的行
    更新为已验收。
