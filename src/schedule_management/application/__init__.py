@@ -1,6 +1,6 @@
 """应用层：用例编排与存储契约。"""
 
-from schedule_management.application.contracts import ScheduleRepository
+from schedule_management.application.contracts import ScheduleRepository, ScheduleUseCases
 from schedule_management.application.errors import (
     DuplicateScheduleError,
     ScheduleNotFoundError,
@@ -13,5 +13,6 @@ __all__ = [
     "ScheduleNotFoundError",
     "ScheduleRepository",
     "ScheduleService",
+    "ScheduleUseCases",
     "StorageError",
 ]

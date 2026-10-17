@@ -20,9 +20,13 @@ composition.py（包根，唯一同时认识 application 与 infrastructure 的�
 
 ## 2. 服务层签名
 
+权威协议是 `application.contracts.ScheduleUseCases`（`@runtime_checkable`），`ScheduleService`
+显式实现它，`composition.build_service` 返回该实现。界面 `ScheduleServicePort` 必须直接复用
+此协议，不再维护第二份签名（见第 9 节）。
+
 ```python
-class ScheduleService:
-    def __init__(self, repository: ScheduleRepository) -> None: ...
+@runtime_checkable
+class ScheduleUseCases(Protocol):
     def list_schedules(self, day: dt.date) -> list[Schedule]: ...
     def create_schedule(
         self, title: str, date_text: str, time_text: str, notes: str
@@ -31,6 +35,10 @@ class ScheduleService:
         self, schedule_id: str, title: str, date_text: str, time_text: str, notes: str
     ) -> Schedule: ...
     def delete_schedule(self, schedule_id: str) -> None: ...
+
+
+class ScheduleService(ScheduleUseCases):
+    def __init__(self, repository: ScheduleRepository) -> None: ...
 ```
 
 - `create_schedule` / `update_schedule` 接收**用户原样输入的字符串**日期与时间，解析归服务层
@@ -38,6 +46,7 @@ class ScheduleService:
 - `list_schedules` 接收 `dt.date`（来自日历点选），返回 `list[Schedule]`；无记录返回空列表。
 - `update_schedule` 返回新对象但 **id 不变**；四个字段全量覆盖，不是增量补丁。
 - 返回值 `Schedule` 结构上满足界面 `ScheduleLike`（`id/title/date/time/notes` 五个只读属性）。
+- `ScheduleUseCases` 是唯一权威协议名；UI 的 `ScheduleServicePort` 只是它的别名，不是第二份定义。
 - `composition.build_service(connection) -> ScheduleService` 是唯一装配点；连接归调用方所有。
 
 ## 3. 错误类型
@@ -101,7 +110,9 @@ class ScheduleRepository(Protocol):
 
 ## 7. 数据库文件位置与连接所有权
 
-- 库文件位置**由入口/组合根决定**，库代码不提供默认路径、不读当前工作目录；入口建好父目录后 connect。
+- 库文件位置**由入口/组合根决定**：`application` 层不提供默认路径、不读当前工作目录；
+  `composition.default_database_path()` 按平台给出默认值，`composition.connect(path=None)`
+  自动创建父目录并返回连接，入口可传入自定义 `path` 覆盖。
 - 测试用 `tmp_path` 注入临时文件；`":memory:"` 仅用于契约测试。
 - 一个服务一个连接，只在 GUI 线程使用（`check_same_thread` 默认）；连接由创建者关闭，长期驻留由入口负责。
 - 真服务开箱为空，不预置演示数据；示例数据只能来自显式 seed 脚本或测试夹具。
@@ -118,3 +129,59 @@ uv run mypy src tests
 
 结构兼容性以 mypy 为准：`ScheduleService` 赋给界面 `ScheduleServicePort` 必须通过，
 且 `presenters.to_row(service.create_schedule(...))` 可直接工作。
+
+## 9. 前端接入清单（必须向本契约对齐）
+
+### 9.1 端口定义：删除 UI 侧重复签名
+
+`ui/ports.py` 的 `ScheduleServicePort` 必须直接引用后端协议，不再复制/改写四个方法：
+
+```python
+from schedule_management.application.contracts import ScheduleUseCases
+
+#: 服务端口就是后端权威协议，不再维护第二份定义。
+ScheduleServicePort = ScheduleUseCases
+```
+
+- 不要保留 `Sequence[ScheduleLike]` 版本的服务方法重新声明；`list[Schedule]` 是
+  `Sequence[ScheduleLike]` 的子类型，`Schedule` 结构上满足 `ScheduleLike`，mypy 可直接通过。
+- `ScheduleLike` 可以继续留在 UI 侧供 `presenters.to_row` 使用，但**服务端口**只认
+  `ScheduleUseCases`。
+- 需要新方法、新字段或修改签名时，先改 `application/contracts.py` 与本文档并走 PR；
+  UI 侧不得先行扩展或本地兜底，避免两份签名再次漂移。
+
+### 9.2 `ui/app.py` 接线示例
+
+```python
+from schedule_management import composition
+
+def main(...) -> int:
+    ...
+    connection = composition.connect()
+    service = composition.build_service(connection)
+    try:
+        window = MainWindow(service=service, clock=resolved_clock)
+        window.show()
+        return app.exec()
+    finally:
+        connection.close()
+```
+
+`connect()` 打开（必要时创建）数据库，`build_service()` 只在连接上装配仓储与服务；
+服务与连接都不缓存为模块级全局，也不在按钮回调里反复新建。
+
+### 9.3 默认库路径与连接所有权
+
+| 平台 | 默认路径 |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%\sdms\schedules.db`；未设环境变量时 `~/AppData/Local/sdms/schedules.db` |
+| macOS | `~/Library/Application Support/sdms/schedules.db` |
+| Linux/其他 | `$XDG_DATA_HOME/sdms/schedules.db`；未设时 `~/.local/share/sdms/schedules.db` |
+
+- 默认值由 `composition.default_database_path()` 提供；`application` 层不感知路径。
+- `connect(path)` 自动 `mkdir(parents=True)` 建父目录并返回 `sqlite3.Connection`；
+  传 `path` 可覆盖默认值（测试/便携模式），`:memory:` 只用于测试。
+- 连接归入口所有：`connect()` 与 `build_service()` 都不关闭连接，由 `main()` 的
+  `finally: connection.close()` 关闭。
+- 一个服务一个连接，只在 GUI 线程使用（`check_same_thread` 默认开启）；不要跨线程共享，
+  也不要每次点击新开连接。

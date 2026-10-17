@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from schedule_management.application.contracts import ScheduleRepository
+from schedule_management.application.contracts import ScheduleRepository, ScheduleUseCases
 from schedule_management.application.errors import ScheduleNotFoundError
 from schedule_management.application.parsing import validate
 from schedule_management.domain.errors import ValidationError
@@ -31,8 +31,12 @@ def _require_schedule_id(schedule_id: str) -> str:
     return clean_id
 
 
-class ScheduleService:
-    """实现 ``ui/ports.py`` 中 ``ScheduleServicePort`` 所描述的服务形状。"""
+class ScheduleService(ScheduleUseCases):
+    """实现 ``application.contracts.ScheduleUseCases``；界面端口直接复用该协议。
+
+    界面 ``ui/ports.py`` 应 ``from schedule_management.application.contracts import
+    ScheduleUseCases`` 并把它设为 ``ScheduleServicePort``，不再维护第二份签名。
+    """
 
     def __init__(self, repository: ScheduleRepository) -> None:
         self._repository = repository

@@ -18,6 +18,8 @@ SQLite 存储层已实现：
 
 服务层已实现：`application/service.py` 负责原始字符串解析、字段校验，并把仓储的 `update`/`delete` 返回的 `False` 翻译成 `ScheduleNotFoundError`；`composition.build_service(connection)` 是唯一装配点。入口尚未切换，因此 SQLite 还没有界面调用方，V-14（重启后数据仍在）尚未对用户验收；数据库文件位置由入口决定。仓储只接收调用方注入的 `sqlite3.Connection`，并且不会修改该连接的 `row_factory`。
 
+`composition.connect()` 是数据库入口：默认打开 Windows `%LOCALAPPDATA%\sdms\schedules.db`（未设环境变量时 `~/AppData/Local`）、macOS `~/Library/Application Support/sdms/schedules.db`、Linux `$XDG_DATA_HOME/sdms/schedules.db`（未设时 `~/.local/share`），自动创建父目录并返回连接；GUI 入口按 `composition.connect() -> composition.build_service(connection) -> MainWindow` 接线，连接由入口在 `finally` 中关闭，且只在 GUI 线程使用。`application.contracts.ScheduleUseCases` 是前端必须对齐的服务协议。
+
 存储层测试命令：
 
 ```text
