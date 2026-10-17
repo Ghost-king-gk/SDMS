@@ -6,10 +6,12 @@ from schedule_management.application.errors import (
     ScheduleNotFoundError,
     StorageError,
 )
+from schedule_management.application.service import ScheduleService
 
 __all__ = [
     "DuplicateScheduleError",
     "ScheduleNotFoundError",
     "ScheduleRepository",
+    "ScheduleService",
     "StorageError",
 ]
