@@ -1,419 +1,144 @@
 # Python 日程管理系统
 
-基于 Python 的图形化简易日程管理系统课程项目，需求来源见 [`Requests/`](Requests/)。项目目标是提供日程的添加、查看、修改、删除和按日期查看能力，并对非法输入和异常情况给出友好提示。
+<div align="center">
 
-## 当前状态
+**基于 Python + PySide6 的桌面日程管理工具**
 
-骨架之外已经落地的是**界面层**：不与 GUI 运行库耦合的那部分（`view_models` / `ports` / `presenters` / `controller`，42 项单测）和 PySide6 窗口实现（`app` / `main_window` / `calendar_view` / `date_picker` / `schedule_form`）都已完成，程序能打开、能增删查改、能截图。
+[![Python](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](https://www.python.org/)
+[![PySide6](https://img.shields.io/badge/PySide6-6.12-green.svg)](https://doc.qt.io/qtforpython/)
+[![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-238%20passed-brightgreen.svg)]()
+[![License](https://img.shields.io/badge/License-Course%20Project-lightgrey.svg)]()
 
-存储层与服务层也已实现：领域模型、仓储契约、SQLite 适配器、`application/service.py` 的用例编排与宽容解析，以及契约/集成测试（见下节）。默认入口已接到 `composition.connect()` + `composition.build_service()`，界面操作写入 SQLite；数据库路径由 `composition.default_database_path()` 决定，首次启动是空库。`seed_demo_data=True` 仅用于演示/截图，此时使用内存替身、不打开数据库。V-14（重启后数据仍在）仍需在 Windows 上按人工验收步骤用真实数据复测。
+</div>
 
-## 存储层现状
+## 📖 项目简介
 
-SQLite 存储层已实现：
+一个用 Python 编写的图形化日程管理系统，支持日程的添加、查看、修改、删除和按日期筛选，并对非法输入、未选中记录、删除确认和存储异常给出友好提示。
 
-- `src/schedule_management/domain/schedule.py`：日程领域对象，负责标题与 `id` 规范化、分钟级时间精度、备注类型等不变量；
-- `src/schedule_management/application/contracts.py`：`ScheduleRepository` 仓储契约；
-- `src/schedule_management/application/service.py`：`ScheduleService`，负责原始字符串解析、字段校验与仓储 `bool` 到 `ScheduleNotFoundError` 的翻译；
-- `src/schedule_management/infrastructure/sqlite_repository.py`：SQLite 适配器（参数化 SQL、事务回滚、错误转换、按日期查询索引）；
-- `src/schedule_management/composition.py`：`build_service(connection)`，唯一同时认识 application 与 infrastructure 的装配点。
+项目采用 PySide6 实现 Windows 桌面界面，SQLite 负责本地持久化；界面、服务层、存储层与组合根彼此分离，交互规则可以脱离 GUI 单独测试。
 
-`tests/contract/` 用同一套用例同时验证内存实现与 SQLite 实现，`tests/integration/` 验证跨连接持久化与异常转换。仓储只接收调用方注入的 `sqlite3.Connection`，并且不会修改该连接的 `row_factory`。
+> **当前状态**：界面层、服务层与 SQLite 存储已完成，默认入口写入真实数据库；Windows 上的最终字体、DPI、原生样式与截图验收待人工完成。
 
-`composition.connect()` 是数据库入口：默认打开 Windows `%LOCALAPPDATA%\sdms\schedules.db`（未设环境变量时 `~/AppData/Local`）、macOS `~/Library/Application Support/sdms/schedules.db`、Linux `$XDG_DATA_HOME/sdms/schedules.db`（未设时 `~/.local/share`），自动创建父目录并返回连接；GUI 入口按 `composition.connect() -> composition.build_service(connection) -> MainWindow` 接线，连接由入口在 `finally` 中关闭，且只在 GUI 线程使用。`application.contracts.ScheduleUseCases` 是前端必须对齐的服务协议。
+## ✨ 核心特性
 
-存储层测试命令：
+- 🗓️ **日程管理**：新增、查看、修改、删除，按选中日期展示当天全部日程；
+- 📅 **日历筛选**：左侧月历选择日期，右侧列表实时刷新；
+- ✍️ **宽容输入**：`2026/10/15`、`2026.10.15`、`2026年10月15日`、`9:05` 等写法由服务层统一解析；
+- 💾 **本地持久化**：SQLite 存储，重启程序后数据仍在；
+- 🛡️ **友好错误提示**：区分输入错误、记录不存在、重复 ID 与存储故障，不向用户泄露堆栈；
+- 🧱 **分层架构**：`ui → application → domain`，`infrastructure` 实现仓储契约，`composition.py` 负责装配；
+- ✅ **自动化测试**：238 条测试覆盖交互规则、解析、CRUD、契约、SQLite 集成与入口装配。
 
-```text
-uv sync --frozen --dev
-uv run pytest tests/unit tests/contract tests/integration -q
-uv run pytest -q
+## 🚀 快速开始
+
+### 环境要求
+
+- **操作系统**：Windows 10/11（64 位，GUI 目标平台）；
+- **Python**：3.12 或更高版本，由 uv 自动下载和管理；
+- **uv**：负责虚拟环境、依赖与锁文件；
+- **磁盘**：首次安装 PySide6 约需 650 MB。
+
+没有 uv 时，先按 [开发与验证](docs/development.md) 安装。Linux 可以运行测试、静态检查与后端代码，但不作为 GUI 验收平台。
+
+### 从源码运行
+
+```powershell
+git clone git@github.com:Ghost-king-gk/SDMS.git
+cd SDMS
+
+uv sync --frozen
+uv run python -m schedule_management.ui.app
 ```
 
-## 需求摘要
+首次启动是空库，数据库文件位于：
 
-- 图形用户界面：日程列表、日历选择和新增/查看/修改/删除操作。
-- 日程字段：标题、日期、时间、备注等必要信息。
-- 日期筛选：选择日期后显示当天全部日程。
-- 可靠性：校验不合法输入，处理未选中记录、删除确认和异常情况。
-- 课程交付：每人 Word 设计文档、组级 PowerPoint、`src/` 下源代码和本 README。
+```text
+%LOCALAPPDATA%\sdms\schedules.db
+```
 
-完整需求材料保留在 [`Requests/`](Requests/)，项目侧的整理版见 [`docs/requirements.md`](docs/requirements.md)。
+想清空数据重来时，关闭程序后删除该文件即可。需要演示数据/截图时使用内存替身，不写入数据库：
 
-## 目录结构
+```powershell
+uv run python -c "from schedule_management.ui.app import main; main(seed_demo_data=True)"
+```
+
+## 📸 界面预览
+
+<p align="center">
+  <img src="docs/screenshots/main-window.png" width="760" alt="日程管理系统主界面">
+</p>
+
+> 截图为演示数据下的界面预览；默认入口使用 SQLite，首次启动为空列表。
+
+## 📚 文档
+
+| 文档 | 内容 |
+| --- | --- |
+| [需求基线](docs/requirements.md) | 功能/非功能需求与课程交付要求 |
+| [开发与验证](docs/development.md) | 环境配置、构建、测试、验证结果与架构状态 |
+| [协作快速指南](docs/collaboration.md) | 分支、PR、提交前检查与 AI 提示词 |
+| [完整协作协议](GITHUB_COLLABORATION.md) | Git/GitHub 基础、Issue/PR 流程、冲突处理 |
+| [界面设计](docs/figures/ui-interaction.md) | 布局、交互规则、验收清单与选型理由 |
+| [团队契约](docs/design/contracts.md) | 服务/仓储签名、错误类型、解析规则、前端接入清单 |
+| [截图说明](docs/screenshots/README.md) | 截图环境、操作步骤与结果 |
+| [设计文档目录](docs/design/README.md) | 各成员 Word 设计文档说明 |
+| [演示文档目录](docs/presentation/README.md) | 组级 PowerPoint 说明 |
+
+## 🛠️ 技术栈
+
+- **语言**：Python 3.12+
+- **界面**：PySide6（Qt for Python）
+- **存储**：SQLite（标准库 `sqlite3`）
+- **依赖管理**：uv + `uv.lock`
+- **测试与质量**：pytest、ruff、mypy（strict）
+
+## 📂 项目结构
 
 ```text
 .
-├── AGENT.md / AGENTS.md      # 智能体与开发规范
-├── README.md                 # 项目说明
-├── Requests/                 # 原始需求，只读
-├── pyproject.toml            # 项目元数据与开发工具配置
-├── uv.lock                   # uv 依赖锁定文件
-├── .python-version           # Python 3.12
-├── src/
-│   ├── schedule_management/  # 应用包（已可安装）
-│   │   ├── ui/               # 界面层：交互规则 + PySide6 窗口实现
-│   │   └── dev_stub_service.py  # 演示用内存替身（seed_demo_data=True）
-├── scripts/                  # 环境探测（qt_probe.py）与界面截图（shoot_ui.py）
-│   └── lib/                  # 课程要求的第三方包随源代码提交位置
-├── tests/                    # 自动化测试
-└── docs/
-    ├── design/               # 成员 Word 设计文档
-    ├── presentation/         # 组级 PowerPoint
-    ├── figures/              # 流程图、示意图、统计图表
-    └── screenshots/           # 测试截图
+├── src/schedule_management/
+│   ├── domain/            # 日程模型与领域不变量
+│   ├── application/       # 服务层、宽容解析、仓储契约
+│   ├── infrastructure/    # SQLite 仓储适配器
+│   ├── ui/                # 交互规则 + PySide6 窗口
+│   ├── composition.py     # 数据库连接与服务装配
+│   └── dev_stub_service.py# 演示用内存替身
+├── tests/                 # 单元、契约、集成测试
+├── docs/                  # 设计、图表、截图、评审
+├── scripts/               # 环境探测与截图脚本
+├── Requests/              # 原始需求（只读）
+├── pyproject.toml / uv.lock
+└── README.md
 ```
 
-## 环境配置
-
-需要安装：
-
-- Python 3.12 或更高版本：由 uv 负责下载和管理，通常不需要手动安装 Python；
-- uv：负责虚拟环境、依赖解析和锁文件；
-- Git：版本管理。
-
-Windows 和 Linux 共用同一套 uv 工作流。差异只在安装 uv、虚拟环境路径、激活命令、终端编码、图形显示和截图工具；Python 版本、`uv.lock`、`uv run` 命令、静态检查与测试命令、代码和目录结构在两个平台上完全一致。
-
-不要向全局 Python 安装本项目依赖。系统 Python 通常受 PEP 668 保护，全局安装既会失败也会污染其他项目。
-
-### Windows 开发环境
-
-以下命令在 PowerShell 中执行。本轮没有 Windows 机器可以验证，因此本节状态为**待成员验证**；第一次执行后请把实际版本号和结果补到本节。
-
-1. 安装 uv（两种方式任选一种）：
-
-```powershell
-# 方式一：官方脚本
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# 方式二：winget
-winget install --id=astral-sh.uv -e
-```
-
-装完重开一个 PowerShell，确认：
-
-```powershell
-uv --version
-```
-
-如果提示找不到 uv，检查 `%USERPROFILE%\.local\bin` 是否在 PATH 中。
-
-2. 在仓库根目录创建虚拟环境并同步依赖：
-
-```powershell
-uv venv --python 3.12
-uv sync --dev --locked
-uv run python --version
-```
-
-`--locked` 表示严格按 `uv.lock` 安装，锁文件不一致会直接报错。这是团队复现环境的一致做法。
-
-3. 如需显式激活环境（多数情况下不需要）：
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-若被执行策略拦住，只对当前会话放开即可，不要改全局策略：
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-```
-
-4. 终端中文与编码：PowerShell 7 默认 UTF-8；旧版 Windows PowerShell 5.1 打印中文可能乱码，先执行：
-
-```powershell
-chcp 65001
-$env:PYTHONUTF8 = "1"
-```
-
-5. 图形界面必须运行在桌面会话中，纯 SSH 或无桌面环境无法显示窗口。
-
-6. 截图使用 Win + Shift + S，另存到 `docs/screenshots/`。
-
-Windows 注意事项：
-
-- 换行符已由 `.gitattributes` 约定：普通文本入库为 LF，`*.bat` 和 `*.ps1` 为 CRLF。保持 Git 默认配置即可，不要手工设置 `core.autocrlf`；如果出现整文件换行差异，先看 `git diff --stat` 再判断，不要盲目提交。
-- 文件名大小写不敏感：Windows 认为 `Schedule.py` 和 `schedule.py` 是同一个文件，Linux 认为不同。导入名必须与文件名大小写完全一致，否则会出现“本机通过、别人失败”。
-- 路径拼接统一使用 `pathlib.Path`，不要在代码里手写反斜杠字符串。
-
-### Linux 开发环境
-
-以下步骤已在 Ubuntu 26.04 上完整验证，结果见“结果记录”。
-
-1. 安装 uv：
+## 🧪 测试
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-默认安装到 `~/.local/bin`。如果希望安装脚本不修改 shell 配置文件，可以跳过：
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | env INSTALLER_NO_MODIFY_PATH=1 sh
-```
-
-2. 创建虚拟环境并同步依赖（与 Windows 完全相同的三条命令）：
-
-```bash
-uv venv --python 3.12
-uv sync --dev --locked
-uv run python --version
-```
-
-3. 如需显式激活环境（多数情况下不需要）：
-
-```bash
-source .venv/bin/activate
-```
-
-日常建议直接用 `uv run <命令>`，它会自动使用 `.venv`，不必先激活；这样也不会误用系统 Python。
-
-4. 图形界面依赖 PySide6（第三方包，由 uv 管理），`uv sync` 之后即可使用。本机实测版本 **PySide6 6.12.0 / Qt 6.12.0**，包目录约 646.7 MB，首次安装耗时较长。GUI 目标平台是 Windows，不做 Linux 端的界面适配（理由见 `docs/figures/ui-interaction.md` 第 1.1 节与第 11 节）。
-
-5. 图形界面的目标平台是 Windows，Linux 上不适配、不保证能起窗口。命令行部分（测试、类型检查、lint）在 Linux 上不受影响——它们不需要显示环境。
-
-### 两个平台的差异对照
-
-| 项目 | Windows | Linux |
-| --- | --- | --- |
-| 安装 uv | 官方 irm 脚本或 winget | 官方 curl 脚本 |
-| uv 安装位置 | `%USERPROFILE%\.local\bin` | `~/.local/bin` |
-| 虚拟环境解释器 | `.venv\Scripts\python.exe` | `.venv/bin/python` |
-| 激活命令 | `.\.venv\Scripts\Activate.ps1` | `source .venv/bin/activate` |
-| 终端编码 | 旧版 PowerShell 需 `chcp 65001` | 通常已是 UTF-8 |
-| 图形显示 | 桌面会话，界面可用 | 命令行可用，**界面不适配**（在另一台机器上冒烟过 PySide6 能起来，但不承诺支持） |
-| 截图工具 | Win + Shift + S | gnome-screenshot / grim / import |
-
-结论：平台差异只影响“怎么装、怎么激活、怎么截图”，不影响“怎么写代码、怎么测试”。任何人都不应把只适用于自己系统的变体写进 README 的通用命令。
-
-### 常见环境问题
-
-| 现象 | 处理方向 |
-| --- | --- |
-| `uv: command not found` | 确认安装目录在 PATH，并重开终端 |
-| 命令用了系统 Python | 统一改用 `uv run <命令>`；确认 `uv run python` 打印的是 `.venv` 内路径 |
-| `import PySide6` 失败 | 在仓库根目录运行 `uv sync` 安装运行时依赖；不要在全局环境里 pip install |
-| GUI 窗口打不开 | 检查显示环境；无桌面时改用自动化测试或由有桌面的成员截图 |
-| 依赖安装失败 | 检查网络与 pypi 可达性，不要用全局 pip 绕过 |
-| `uv.lock` 合并冲突 | 不要手改 `uv.lock`，交给 uv 重新解析并评审差异 |
-
-本项目的依赖声明以 `pyproject.toml` 为准，精确解析结果以 `uv.lock` 为准。GUI 框架已选定 **PySide6**（`>=6.11.2,<7.0`，桌面端只做 Windows），存储用标准库 `sqlite3`；选型理由、平台范围与前后端接缝记录在 `docs/figures/ui-interaction.md` 第 1.1、11 节。
-
-### 项目包与可安装布局
-
-`pyproject.toml` 中 `[tool.uv] package = true`，并声明了 `[build-system]`，因此本项目自身就是一个可安装包，而不只是一堆源码文件。
-
-这解决了一个具体问题：在 src 布局下，Python 导入时只看 `sys.path`，不会自动去搜索 `src/` 目录。如果不把项目安装成包，`tests/` 中的代码就无法 `import schedule_management`，只能靠临时设置 `PYTHONPATH` 掩盖；而环境变量与个人机器绑定，无法进仓库、无法复现，也不符合 `AGENTS.md` 的要求。
-
-`uv sync` 会以 editable（开发模式）安装本项目，效果是：
-
-- `import schedule_management` 在任何工作目录下都可用；
-- 源码没有被复制，导入的仍是仓库内的 `src/schedule_management/`，改代码立即生效，不需要重装；
-- `uv.lock` 中该项目的条目为 `source = { editable = "." }`，可据此确认是 editable 而不是普通安装。
-
-验证方式：
-
-```text
-uv run python -c "import schedule_management as m; print(m.__file__)"
-```
-
-输出应以 `src/schedule_management/__init__.py` 结尾。
-
-两点说明：
-
-- 构建依赖 hatchling 不会出现在 `uv.lock` 里，uv 在隔离的构建环境中获取它，因此锁文件本身没有新增第三方包条目；
-- 发布名与导入名不同：发布名是 `schedule-management-system`（`[project].name`），导入名是 `schedule_management`。因此 `[tool.hatch.build.targets.wheel]` 必须显式声明 `packages`，不能依赖自动推断。
-
-构建可分发文件（用于提交或转交他人）：
-
-```text
-uv build
-```
-
-生成 `dist/` 下的 `.whl` 与 `.tar.gz`。`dist/` 已在 `.gitignore` 中，不会提交。
-
-应用入口（例如 `uv run python -m schedule_management`）需要 `src/schedule_management/__main__.py`，当前尚未创建。
-
-## 编译与静态检查
-
-Python 项目没有独立的传统编译步骤。提交前使用字节码编译检查和质量工具：
-
-```powershell
-uv run python -m compileall src
-uv run ruff check .
-uv run mypy src
-```
-
-本项目已是可安装包，因此可以构建分发文件：`uv build` 会生成 `dist/` 下的 `.whl` 与 `.tar.gz`。图形界面入口尚未创建，等 `__main__.py` 落地后再补充启动命令；不要用占位入口冒充完成。
-
-下面四套命令在 Windows 和 Linux 上完全相同，不区分平台，也不需要先激活虚拟环境：
-
-```text
 uv run python -m compileall src
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
+uv run pytest -q                  # 238 passed
 ```
 
-其中 `ruff format --check` 只检查格式是否符合统一风格，不会修改文件；需要自动修复时去掉 `--check` 再执行。
+详细的环境配置、Windows/Linux 差异、测试明细与验证结果见 [`docs/development.md`](docs/development.md)。
 
-## 运行
+## 🤝 贡献
 
-图形界面已经可以真的打开。统一使用 uv 执行，避免调用错误的全局 Python：
+从 `main` 创建个人分支，完成一个清晰的小任务后通过 Pull Request 请求审查和合并；不要直接 push `main`。分支命名、Conventional Commits、PR 描述、冲突处理和 AI 协作提示词见：
 
-```bash
-uv sync                                   # 首次需要下载 PySide6（约 650 MB）
-uv run python -m schedule_management.ui.app
-```
+- [协作快速指南](docs/collaboration.md)
+- [完整协作协议](GITHUB_COLLABORATION.md)
+- [项目开发规范](AGENTS.md)
 
-Windows 上若不想同时弹出控制台窗口，可用 `pythonw`；调试阶段仍建议保留控制台以便看到日志。
+## 📄 许可证
 
-Linux 端不再作为 GUI 验收平台：图形界面只做 Windows（见 `docs/figures/ui-interaction.md` 第 1.1 节）。Linux 上仍可跑测试、静态检查与后端代码。
+本项目为课程作业，仓库未附开源许可证；代码与文档仅供课程评审使用，如需复用请先联系作者。
 
-需要复现 `docs/screenshots/` 里的图，或把可机器判定的验收项跑一遍：
+## 🙏 致谢
 
-```bash
-uv run python scripts/shoot_ui.py         # 必须在有桌面的 Windows 会话里跑
-```
-
-离屏模式（`QT_QPA_PLATFORM=offscreen`）在这台机器上解析不到中文字体，截图里的中文全是方块，因此**离屏只用来验证窗口能否创建，不能用来出图**。
-
-**默认入口使用 SQLite。** 数据库路径由 `composition.default_database_path()` 决定（Windows `%LOCALAPPDATA%\sdms\schedules.db`，未设环境变量时 `~/AppData/Local`），`main()` 按 `composition.connect() -> composition.build_service(connection) -> MainWindow` 接线，退出时在 `finally` 中关闭连接；首次启动是空库。`seed_demo_data=True` 只给演示/截图用，走内存替身 `dev_stub_service.py`，不打开数据库、退出即丢：
-
-```bash
-uv run python -c "from schedule_management.ui.app import main; main(seed_demo_data=True)"
-```
-
-## 测试
-
-测试框架已配置为 pytest，测试目录为 `tests/`：
-
-```text
-uv run pytest
-uv run pytest --cov=src --cov-report=term-missing
-```
-
-测试命令在两个平台上完全一致。当前 `tests/` 除环境门禁测试 `tests/test_environment.py`（9 个用例，验证运行环境和打包配置）外，还包括存储层的领域、契约和集成测试：
-
-| 测试 | 验证内容 |
-| --- | --- |
-| `test_python_version_meets_requirement` | Python 版本满足 `requires-python >= 3.12` |
-| `test_running_inside_virtual_environment` | 测试确实运行在虚拟环境内，而不是系统 Python |
-| `test_required_stdlib_module_importable` | `sqlite3`、`datetime`、`calendar` 能被真正导入 |
-| `test_gui_framework_is_importable` | PySide6 能真正导入且版本落在 `>=6.11.2,<7.0` 区间内 |
-| `test_sqlite3_can_open_in_memory_database` | 能打开内存 SQLite 库并执行一次查询 |
-| `test_project_package_is_importable` | 项目包可导入，且 editable 指向仓库 `src/` 目录 |
-| `test_installed_version_matches_package_version` | 分发版本与包内 `__version__` 一致，防止两处漂移 |
-
-环境门禁测试的作用：在三人各自的机器上，先把“环境或打包配置不对”和“业务代码不对”区分开。例如缺少 PySide6 时，失败信息会直接指出该跑 `uv sync`；`pyproject.toml` 的 src 布局被改坏时，会失败在导入测试而不是业务测试。路径断言使用 `pathlib` 的层级判断而不是字符串拼接，因此 Windows 的反斜杠也能正确通过。
-
-业务测试覆盖两层：界面层的交互规则（`test_controller.py` 23 项）、文案与错误映射（`test_presenters.py` 24 项）、分层守卫（`test_ui_layering.py` 33 项）、开发替身服务的边界（`test_dev_stub_service.py` 33 项）、演示工厂（`test_app_demo_service.py` 3 项），连同环境门禁 9 项，共 **125 项**；存储/服务层另有领域、契约、集成、入口装配与服务编排测试（`tests/unit/test_schedule.py`、`tests/unit/test_service.py`、`tests/contract/`、`tests/integration/`）。当前 `main` + 本分支合流后全量 `238 passed`。GUI 结果与截图归档到 `docs/screenshots/`，环境与操作步骤见该目录下的 `README.md`。
-
-判断真实性的原则：如果某次运行显示 `collected 0 items`，那是“没有测试”而不是“测试通过”；测试通过必须有明确的 `N passed` 和退出码 0。
-
-关于中文标点：`pyproject.toml` 中的 `allowed-confusables` 显式放行了常见中文全角标点，因为本项目的注释、文档字符串和用户提示都使用中文。修改这部分配置前请先确认原因，不要为了让某次检查通过而放宽规则。
-
-## 结果记录
-
-环境状态使用以下命令记录，两个平台一致：
-
-```text
-uv run python --version
-uv lock --check
-git status --short --branch
-```
-
-### 已验证的环境结果
-
-下表是 Linux 开发环境下实际执行得到的输出，作为团队复现的参照基线：
-
-| 检查项 | 命令 | 实际结果 |
-| --- | --- | --- |
-| 操作系统 | `cat /etc/os-release` | Ubuntu 26.04 LTS |
-| uv 版本 | `uv --version` | 0.12.13（`~/.local/bin/uv`） |
-| Python 版本 | `uv run python --version` | Python 3.12.14 |
-| 依赖同步 | `uv sync --dev --locked` | 14 个包，锁文件无需变更 |
-| 锁文件一致性 | `uv lock --check` | 通过 |
-| 代码规范 | `uv run ruff check .` | `All checks passed!` |
-| 代码格式 | `uv run ruff format --check .` | `64 files already formatted` |
-| 字节码编译 | `uv run python -m compileall -q src tests` | 通过 |
-| 项目包导入 | `uv run python -c "import schedule_management as m; print(m.__file__)"` | 成功，指向 `src/schedule_management/__init__.py` |
-| 构建分发文件 | `uv build` | 生成 `.whl` 与 `.tar.gz` |
-| PySide6 可用性 | `uv run python -c "import PySide6; print(PySide6.__version__)"` | 成功，6.12.0（Qt 6.12.0） |
-| 窗口创建与截图 | `uv run python scripts/shoot_ui.py` | 八个场景全通过，截图写入 `docs/screenshots/` |
-| 自动化测试 | `uv run pytest -q` | `238 passed`（含入口装配集成测试） |
-| 类型检查 | `uv run mypy src tests` | `Success: no issues found in 44 source files` |
-
-关于这些结果，有一点必须如实说明，不能因为表里全是绿色就当成“功能已完成”：
-
-- **界面层测试**：交互规则、文案与错误映射、分层守卫、演示替身的边界。它们证明界面交互是对的；持久化由存储层的契约/集成测试覆盖，其中 `tests/integration/test_app_entrypoint.py` 验证默认入口真的打开 SQLite、开箱为空且连接被关闭。
-- 同理，`shoot_ui.py` 的八个场景跑在**内存替身**上。窗口正确地显示了 3 条日程，不代表 SQLite 里真的有这 3 条；它只用于出图。
-- 后端三层（domain / application / infrastructure）已落地，自动化测试覆盖跨连接持久化；V-14「重启后数据仍在」仍需在 Windows 上按人工验收步骤用真实数据复测。
-
-Windows 环境结果待拥有 Windows 设备的成员按“Windows 开发环境”步骤执行后补充，请勿照抄上面的数据。
-
-业务完成后的结果应补充功能清单、测试数量与通过情况、已知限制和运行截图；不要把“门禁全绿”写成“功能已实现”。
-
-## GitHub 多人协作快速指南
-
-第一次参与 GitHub 协作时，只记住这条主线：从 main 更新代码，创建个人分支，在个人分支完成一个清晰的小任务，提交并 push，然后通过 Pull Request 请求审查和合并。不要直接修改或 push main。
-
-完整协议见 [GITHUB_COLLABORATION.md](GITHUB_COLLABORATION.md)，其中包含 Git/GitHub 基础概念、分支命名、提交格式、Issue/PR 沟通、冲突处理、恢复命令和 AI 协作提示词。
-
-### 新人常用命令
-
-~~~powershell
-git clone <GitHub仓库地址>
-cd SDMS
-uv venv --python 3.12
-uv sync --dev
-
-git switch main
-git pull --ff-only origin main
-git switch -c feature/your-task
-
-git status
-git diff
-git add path/to/changed-file
-git diff --cached
-git diff --cached --check
-git commit -m 'type(scope): short description'
-git push -u origin feature/your-task
-~~~
-
-### Pull Request 提交前
-
-PR 应说明改动内容、对应 Issue/需求、验证方式、测试结果和已知限制。GUI 改动附运行或测试截图，文档改动注明对应章节。建议运行：
-
-~~~powershell
-uv lock --check
-uv run ruff check .
-uv run pytest
-uv run python -m compileall src
-~~~
-
-### 可以直接复制给 AI 的提示词
-
-~~~text
-请只读分析本仓库，不修改文件、不提交、不推送。
-先阅读 README.md、AGENTS.md、GITHUB_COLLABORATION.md 和 Requests/ 下的需求，
-说明当前任务需要改哪些文件、如何测试，以及可能影响哪些协作者。
-~~~
-
-~~~text
-请审阅当前 git diff，只读检查，不修改文件。
-重点检查需求覆盖、无关改动、密钥/缓存泄露、测试和文档缺失，
-并按“必须修改、建议修改、已通过”分类，不要虚构测试结果。
-~~~
-
-AI 只能辅助分析和检查，提交、push、关闭 Issue、合并 PR 等动作必须由成员明确确认。不要把密码、令牌、私钥或个人隐私发给 AI。
-
-## 交付材料
-
-- `docs/design/`：每位成员一份 Word 设计文档，正文不少于 20 页（附录不计入），清楚标注分工并包含流程图、示意图、统计图表和测试截图。
-- `docs/presentation/`：每组一份不少于 20 页的 PowerPoint，首页列出按贡献排序的姓名和学号，页内标注具体贡献。
-- `src/`：全部 Python 源代码；如使用并随作业提交第三方包，按要求放入 `src/lib/` 并记录许可证和版本。
-- `README.md`：持续维护环境配置、编译/检查、运行、测试和结果说明。
-
-更详细的协作约定见 [`AGENTS.md`](AGENTS.md)。
+- [PySide6](https://doc.qt.io/qtforpython/) / Qt：桌面界面与跨平台控件；
+- [uv](https://docs.astral.sh/uv/)：Python 版本、依赖与虚拟环境管理；
+- pytest、ruff、mypy：测试与质量门禁；
+- 课程指导教师与三位组员在需求、设计和联调中的协作。
