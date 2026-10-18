@@ -57,6 +57,9 @@ class ScheduleServicePort(Protocol):
 
     `list_schedules` 仍然按 `dt.date` 查询：这个值来自日历控件的点选结果，
     本身就是日期对象，不存在"用户手写"的问题。
+
+    权威定义是 `schedule_management.application.contracts.ScheduleUseCases`；
+    本协议只是界面侧的结构性镜像，方法签名必须与它保持一致，不得单独扩展。
     """
 
     def list_schedules(self, day: dt.date) -> Sequence[ScheduleLike]:
