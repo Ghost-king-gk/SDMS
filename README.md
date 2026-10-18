@@ -6,7 +6,7 @@
 
 骨架之外已经落地的是**界面层**：不与 GUI 运行库耦合的那部分（`view_models` / `ports` / `presenters` / `controller`，42 项单测）和 PySide6 窗口实现（`app` / `main_window` / `calendar_view` / `date_picker` / `schedule_form`）都已完成，程序能打开、能增删查改、能截图。
 
-存储层与服务层也已实现：领域模型、仓储契约、SQLite 适配器、`application/service.py` 的用例编排与宽容解析，以及契约/集成测试（见下节）。`ui/app.py` 仍注入 `DevStubScheduleService`，因此界面操作暂时不会写入 SQLite；把入口切到 `composition.build_service()` 并确定数据库文件位置后，V-14（重启后数据仍在）才能对用户验收。
+存储层与服务层也已实现：领域模型、仓储契约、SQLite 适配器、`application/service.py` 的用例编排与宽容解析，以及契约/集成测试（见下节）。默认入口已接到 `composition.connect()` + `composition.build_service()`，界面操作写入 SQLite；数据库路径由 `composition.default_database_path()` 决定，首次启动是空库。`seed_demo_data=True` 仅用于演示/截图，此时使用内存替身、不打开数据库。V-14（重启后数据仍在）仍需在 Windows 上按人工验收步骤用真实数据复测。
 
 ## 存储层现状
 
@@ -53,7 +53,7 @@ uv run pytest -q
 ├── src/
 │   ├── schedule_management/  # 应用包（已可安装）
 │   │   ├── ui/               # 界面层：交互规则 + PySide6 窗口实现
-│   │   └── dev_stub_service.py  # 内存替身服务，让界面暂不依赖后端
+│   │   └── dev_stub_service.py  # 演示用内存替身（seed_demo_data=True）
 ├── scripts/                  # 环境探测（qt_probe.py）与界面截图（shoot_ui.py）
 │   └── lib/                  # 课程要求的第三方包随源代码提交位置
 ├── tests/                    # 自动化测试
@@ -279,7 +279,11 @@ uv run python scripts/shoot_ui.py         # 必须在有桌面的 Windows 会话
 
 离屏模式（`QT_QPA_PLATFORM=offscreen`）在这台机器上解析不到中文字体，截图里的中文全是方块，因此**离屏只用来验证窗口能否创建，不能用来出图**。
 
-**当前跑在内存替身服务上。** `src/schedule_management/dev_stub_service.py` 让界面在后端落地之前就能被使用和验收，但它**不做持久化**——退出程序数据即丢。真正的存储要等 SQLite 实现，届时只需替换 `ui/app.py` 里 `build_service()` 这一处注入。不要因为“能增删查改”就误判系统已完成。
+**默认入口使用 SQLite。** 数据库路径由 `composition.default_database_path()` 决定（Windows `%LOCALAPPDATA%\sdms\schedules.db`，未设环境变量时 `~/AppData/Local`），`main()` 按 `composition.connect() -> composition.build_service(connection) -> MainWindow` 接线，退出时在 `finally` 中关闭连接；首次启动是空库。`seed_demo_data=True` 只给演示/截图用，走内存替身 `dev_stub_service.py`，不打开数据库、退出即丢：
+
+```bash
+uv run python -c "from schedule_management.ui.app import main; main(seed_demo_data=True)"
+```
 
 ## 测试
 
@@ -304,7 +308,7 @@ uv run pytest --cov=src --cov-report=term-missing
 
 环境门禁测试的作用：在三人各自的机器上，先把“环境或打包配置不对”和“业务代码不对”区分开。例如缺少 PySide6 时，失败信息会直接指出该跑 `uv sync`；`pyproject.toml` 的 src 布局被改坏时，会失败在导入测试而不是业务测试。路径断言使用 `pathlib` 的层级判断而不是字符串拼接，因此 Windows 的反斜杠也能正确通过。
 
-业务测试覆盖两层：界面层的交互规则（`test_controller.py` 23 项）、文案与错误映射（`test_presenters.py` 24 项）、分层守卫（`test_ui_layering.py` 33 项）、开发替身服务的边界（`test_dev_stub_service.py` 33 项），连同环境门禁 9 项，共 **122 项**；存储/服务层另有领域、契约、集成与服务编排测试（`tests/unit/test_schedule.py`、`tests/unit/test_service.py`、`tests/contract/`、`tests/integration/`）。当前 `main` + 本分支合流后全量 `234 passed`。GUI 结果与截图归档到 `docs/screenshots/`，环境与操作步骤见该目录下的 `README.md`。
+业务测试覆盖两层：界面层的交互规则（`test_controller.py` 23 项）、文案与错误映射（`test_presenters.py` 24 项）、分层守卫（`test_ui_layering.py` 33 项）、开发替身服务的边界（`test_dev_stub_service.py` 33 项）、演示工厂（`test_app_demo_service.py` 3 项），连同环境门禁 9 项，共 **125 项**；存储/服务层另有领域、契约、集成、入口装配与服务编排测试（`tests/unit/test_schedule.py`、`tests/unit/test_service.py`、`tests/contract/`、`tests/integration/`）。当前 `main` + 本分支合流后全量 `238 passed`。GUI 结果与截图归档到 `docs/screenshots/`，环境与操作步骤见该目录下的 `README.md`。
 
 判断真实性的原则：如果某次运行显示 `collected 0 items`，那是“没有测试”而不是“测试通过”；测试通过必须有明确的 `N passed` 和退出码 0。
 
@@ -338,14 +342,14 @@ git status --short --branch
 | 构建分发文件 | `uv build` | 生成 `.whl` 与 `.tar.gz` |
 | PySide6 可用性 | `uv run python -c "import PySide6; print(PySide6.__version__)"` | 成功，6.12.0（Qt 6.12.0） |
 | 窗口创建与截图 | `uv run python scripts/shoot_ui.py` | 八个场景全通过，截图写入 `docs/screenshots/` |
-| 自动化测试 | `uv run pytest -q` | `234 passed`（与存储层/服务层合流后全量） |
-| 类型检查 | `uv run mypy src tests` | `Success: no issues found in 42 source files` |
+| 自动化测试 | `uv run pytest -q` | `238 passed`（含入口装配集成测试） |
+| 类型检查 | `uv run mypy src tests` | `Success: no issues found in 44 source files` |
 
 关于这些结果，有一点必须如实说明，不能因为表里全是绿色就当成“功能已完成”：
 
-- **122 项测试覆盖的是界面层**：交互规则、文案与错误映射、分层守卫、替身服务的边界。它们证明界面交互是对的，**但不证明数据能存住**——持久化不在界面层测试范围内，由存储层的契约/集成测试覆盖。
-- 同理，`shoot_ui.py` 的八个场景跑在**内存替身**上。窗口正确地显示了 3 条日程，不代表 SQLite 里真的有这 3 条。
-- 后端三层（domain / application / infrastructure）一旦落地，必须补 `tests/contract/` 与 `tests/integration/`，并在真数据上重跑 V-14「重启后数据仍在」。
+- **界面层测试**：交互规则、文案与错误映射、分层守卫、演示替身的边界。它们证明界面交互是对的；持久化由存储层的契约/集成测试覆盖，其中 `tests/integration/test_app_entrypoint.py` 验证默认入口真的打开 SQLite、开箱为空且连接被关闭。
+- 同理，`shoot_ui.py` 的八个场景跑在**内存替身**上。窗口正确地显示了 3 条日程，不代表 SQLite 里真的有这 3 条；它只用于出图。
+- 后端三层（domain / application / infrastructure）已落地，自动化测试覆盖跨连接持久化；V-14「重启后数据仍在」仍需在 Windows 上按人工验收步骤用真实数据复测。
 
 Windows 环境结果待拥有 Windows 设备的成员按“Windows 开发环境”步骤执行后补充，请勿照抄上面的数据。
 
