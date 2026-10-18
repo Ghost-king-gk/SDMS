@@ -4,7 +4,27 @@
 
 ## 当前状态
 
-当前提交是项目开发骨架初始化：已建立 `src` 布局、测试和交付文档目录、uv 配置、质量工具配置以及 Git/智能体协作规范。按照本次任务要求，尚未编写业务实现代码。
+当前分支是存储层实现（`feature/sqlite-storage`）：已加入日程领域模型、仓储契约、SQLite 适配器以及契约/集成测试；图形界面和服务层尚未实现。合并界面分支后，`ui/app.py` 仍注入 `DevStubScheduleService`，界面操作暂时不会写入 SQLite。
+
+## 存储层现状
+
+SQLite 存储层已实现：
+
+- `src/schedule_management/domain/schedule.py`：日程领域对象，负责标题与 `id` 规范化、分钟级时间精度、备注类型等不变量；
+- `src/schedule_management/application/contracts.py`：`ScheduleRepository` 仓储契约；
+- `src/schedule_management/infrastructure/sqlite_repository.py`：SQLite 适配器（参数化 SQL、事务回滚、错误转换、按日期查询索引）。
+
+`tests/contract/` 用同一套用例同时验证内存实现与 SQLite 实现，`tests/integration/` 验证跨连接持久化与异常转换。
+
+服务层尚未实现：仓库中没有 `application/service.py`。因此 SQLite 目前还没有调用方，V-14（重启后数据仍在）尚未联调；数据库文件位置也留待服务层/入口确定。仓储只接收调用方注入的 `sqlite3.Connection`，并且不会修改该连接的 `row_factory`。
+
+存储层测试命令：
+
+```text
+uv sync --frozen --dev
+uv run pytest tests/unit tests/contract tests/integration -q
+uv run pytest -q
+```
 
 ## 需求摘要
 
@@ -264,7 +284,7 @@ uv run pytest
 uv run pytest --cov=src --cov-report=term-missing
 ```
 
-测试命令在两个平台上完全一致。当前 `tests/` 已包含环境门禁测试 `tests/test_environment.py`，共 9 个用例，验证的是运行环境和打包配置，而不是业务功能：
+测试命令在两个平台上完全一致。当前 `tests/` 除环境门禁测试 `tests/test_environment.py`（9 个用例，验证运行环境和打包配置）外，还包括存储层的领域、契约和集成测试：
 
 | 测试 | 验证内容 |
 | --- | --- |
@@ -277,7 +297,7 @@ uv run pytest --cov=src --cov-report=term-missing
 
 环境门禁测试的作用：在三人各自的 Windows / Linux 机器上，先把“环境或打包配置不对”和“业务代码不对”区分开。例如缺少 Tkinter 时，失败信息会直接指出解释器路径；`pyproject.toml` 的 src 布局被改坏时，会失败在导入测试而不是业务测试。路径断言使用 `pathlib` 的层级判断而不是字符串拼接，因此 Windows 的反斜杠也能正确通过。
 
-业务测试（新增、按日期查询、修改、删除、删除确认、空/非法输入、未选中记录和异常提示）尚未编写，由各模块作者按模块补充。约定位置为 `tests/unit/`、`tests/contract/`、`tests/integration/`。GUI 测试结果与截图归档到 `docs/screenshots/`，并记录操作系统与 Python/Tk 版本、前置数据、操作步骤、预期结果和实际结果。
+服务层和界面的业务测试（原始字符串解析、未选中记录、删除确认和异常提示）尚未编写，由后续模块作者补充。约定位置为 `tests/unit/`、`tests/contract/`、`tests/integration/`。GUI 测试结果与截图归档到 `docs/screenshots/`，并记录操作系统与 Python/Tk 版本、前置数据、操作步骤、预期结果和实际结果。
 
 判断真实性的原则：如果某次运行显示 `collected 0 items`，那是“没有测试”而不是“测试通过”；测试通过必须有明确的 `N passed` 和退出码 0。
 
