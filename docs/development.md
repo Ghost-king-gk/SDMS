@@ -12,7 +12,7 @@
 - **入口**：`ui/app.py` 默认通过 `composition.connect()` + `composition.build_service()` 使用 SQLite，退出时在 `finally` 关闭连接；
 - **演示模式**：`main(seed_demo_data=True)` 使用内存替身 `DevStubScheduleService`，只用于截图/演示，不打开数据库。
 
-仍在人工验收中的部分：Windows 真窗口的字体、DPI、原生样式、截图与美术效果；V-14「重启后数据仍在」需要在 Windows 上用真实数据复测。后端持久化链路已在本机用临时库验证。
+仍在人工验收中的部分：Windows 真窗口的字体、DPI、原生样式、截图与美术效果。V-14「重启后数据仍在」已由 `scripts/shoot_ui.py` 的真服务场景在真 SQLite 临时库上验过并留截图，机器可判定的 38 项断言全过（32 项界面回归 + 6 项真服务）。
 
 ### 分层与依赖方向
 
@@ -297,8 +297,8 @@ uv run pytest --cov=src --cov-report=term-missing
 
 说明：
 
-- `scripts/shoot_ui.py` 用于在 Windows 桌面上生成截图与断言，输出写入 `screenshots/`；它使用内存替身，不代表 SQLite 里真的有那些数据。
-- V-14「重启后数据仍在」的后端链路已用临时库验证；Windows 端仍需按真实操作人工复测并补截图。
+- `scripts/shoot_ui.py` 用于在 Windows 桌面上生成截图与断言，输出写入 `screenshots/`：32 项界面回归跑内存替身（种子确定、不进磁盘），6 项真服务场景走 `composition.connect() -> build_service()` 真链路 + 临时目录真 SQLite，并产出 `main-window-real-service.png` / `main-window-real-restart.png` 两张真服务截图。
+- V-14「重启后数据仍在」已由上述真服务场景验证（关窗、关连接、重开同一库，数据仍在）；Windows 端剩余人工项是字体、DPI 缩放与原生样式在各分辨率下的目视检查。
 - Windows 环境结果待拥有 Windows 设备的成员按第 2 节执行后补充，请勿照抄 Linux 数据。
 
 更详细的设计与契约见：
