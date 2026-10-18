@@ -142,3 +142,9 @@ uv run pytest -q                  # 238 passed
 - [uv](https://docs.astral.sh/uv/)：Python 版本、依赖与虚拟环境管理；
 - pytest、ruff、mypy：测试与质量门禁；
 - 课程指导教师与三位组员在需求、设计和联调中的协作。
+- [DeepSeek](https://www.deepseek.com/): DeepSeek-v4.1-flash 与 DeepSeek-v4.1-flash-1017 提供指导、需求分析、文档、教程书写与代码检查。
+- [WorkBuddy](https://www.workbuddy.ai/)：Harness for LLMs
+- [Hermes](https://github.com/NousResearch/hermes-agent): Harness for LLMs
+- [Codex Desktop](https://github.com/openai/codex) Harness for LLMs
+- [Copilot](https://copilot.com/): Harness for LLMs and repo management
+
