@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-当前分支是存储层实现（`feature/sqlite-storage`）：已加入日程领域模型、仓储契约、SQLite 适配器以及契约/集成测试；图形界面和服务层尚未实现。合并界面分支后，`ui/app.py` 仍注入 `DevStubScheduleService`，界面操作暂时不会写入 SQLite。
+当前分支是存储层 + 服务层实现（`feature/application-service`，基于 `feature/sqlite-storage`）：已加入日程领域模型、仓储契约、SQLite 适配器、`application/service.py` 的服务编排与宽容解析，以及契约/集成/服务测试。图形界面尚未接入真服务：`ui/app.py` 仍注入 `DevStubScheduleService`，界面操作暂时不会写入 SQLite。
 
 ## 存储层现状
 
@@ -16,7 +16,9 @@ SQLite 存储层已实现：
 
 `tests/contract/` 用同一套用例同时验证内存实现与 SQLite 实现，`tests/integration/` 验证跨连接持久化与异常转换。
 
-服务层尚未实现：仓库中没有 `application/service.py`。因此 SQLite 目前还没有调用方，V-14（重启后数据仍在）尚未联调；数据库文件位置也留待服务层/入口确定。仓储只接收调用方注入的 `sqlite3.Connection`，并且不会修改该连接的 `row_factory`。
+服务层已实现：`application/service.py` 负责原始字符串解析、字段校验，并把仓储的 `update`/`delete` 返回的 `False` 翻译成 `ScheduleNotFoundError`；`composition.build_service(connection)` 是唯一装配点。入口尚未切换，因此 SQLite 还没有界面调用方，V-14（重启后数据仍在）尚未对用户验收；数据库文件位置由入口决定。仓储只接收调用方注入的 `sqlite3.Connection`，并且不会修改该连接的 `row_factory`。
+
+`composition.connect()` 是数据库入口：默认打开 Windows `%LOCALAPPDATA%\sdms\schedules.db`（未设环境变量时 `~/AppData/Local`）、macOS `~/Library/Application Support/sdms/schedules.db`、Linux `$XDG_DATA_HOME/sdms/schedules.db`（未设时 `~/.local/share`），自动创建父目录并返回连接；GUI 入口按 `composition.connect() -> composition.build_service(connection) -> MainWindow` 接线，连接由入口在 `finally` 中关闭，且只在 GUI 线程使用。`application.contracts.ScheduleUseCases` 是前端必须对齐的服务协议。
 
 存储层测试命令：
 
