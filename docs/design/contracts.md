@@ -59,6 +59,7 @@ class ScheduleService(ScheduleUseCases):
 | `StorageError` | `application/errors.py` | 存储不可用（锁、只读、坏行、连接失效） | 仓储，服务层原样透传 |
 
 - `DuplicateScheduleError` 是 `StorageError` 子类，**分类时先判 `Duplicate` 再判 `Storage`**，否则重复 ID 会被误报成存储故障。
+- `DuplicateScheduleError` 只表示**主键 / `id` 冲突**：标题、日期、时间、备注相同但 `id` 不同的两条日程是**合法**的，服务层与仓储都不做内容去重；界面文案不要写成“这条日程已经存在”，建议用“保存冲突，请刷新后重试”这类不暗示内容重复的说法。
 - 服务层不把仓储异常包成新类型；`except` 后重新抛同一实例，保留原始消息与 `cause`。
 - 类名带 `Error` 后缀是最终名。界面 `presenters.error_category` 已改为优先 `isinstance` 判定真类，
   并按类名/MRO 兜底兼容开发替身；`Duplicate` 必须先于 `StorageError`，本契约不为迁就按名匹配而改名。
