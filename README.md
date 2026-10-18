@@ -1,21 +1,34 @@
 # Python 日程管理系统
 
-- zch 已阅
-- xhy 已阅
-- ljj 已阅
-
-
 基于 Python 的图形化简易日程管理系统课程项目，需求来源见 [`Requests/`](Requests/)。项目目标是提供日程的添加、查看、修改、删除和按日期查看能力，并对非法输入和异常情况给出友好提示。
 
 ## 当前状态
 
 骨架之外已经落地的是**界面层**：不与 GUI 运行库耦合的那部分（`view_models` / `ports` / `presenters` / `controller`，42 项单测）和 PySide6 窗口实现（`app` / `main_window` / `calendar_view` / `date_picker` / `schedule_form`）都已完成，程序能打开、能增删查改、能截图。
 
-尚未实现的部分同样要写清楚，避免误导：
+存储层与服务层也已实现：领域模型、仓储契约、SQLite 适配器、`application/service.py` 的用例编排与宽容解析，以及契约/集成测试（见下节）。`ui/app.py` 仍注入 `DevStubScheduleService`，因此界面操作暂时不会写入 SQLite；把入口切到 `composition.build_service()` 并确定数据库文件位置后，V-14（重启后数据仍在）才能对用户验收。
 
-- **没有持久化**。界面目前跑在内存替身服务上，退出程序数据即丢，SQLite 存储层待完成。
-- **后端三层（domain / application / infrastructure）尚未实现**，替换替身服务后才能算联调通过。
-- 界面交互的设计依据与验收清单见 [`docs/figures/ui-interaction.md`](docs/figures/ui-interaction.md)。
+## 存储层现状
+
+SQLite 存储层已实现：
+
+- `src/schedule_management/domain/schedule.py`：日程领域对象，负责标题与 `id` 规范化、分钟级时间精度、备注类型等不变量；
+- `src/schedule_management/application/contracts.py`：`ScheduleRepository` 仓储契约；
+- `src/schedule_management/application/service.py`：`ScheduleService`，负责原始字符串解析、字段校验与仓储 `bool` 到 `ScheduleNotFoundError` 的翻译；
+- `src/schedule_management/infrastructure/sqlite_repository.py`：SQLite 适配器（参数化 SQL、事务回滚、错误转换、按日期查询索引）；
+- `src/schedule_management/composition.py`：`build_service(connection)`，唯一同时认识 application 与 infrastructure 的装配点。
+
+`tests/contract/` 用同一套用例同时验证内存实现与 SQLite 实现，`tests/integration/` 验证跨连接持久化与异常转换。仓储只接收调用方注入的 `sqlite3.Connection`，并且不会修改该连接的 `row_factory`。
+
+`composition.connect()` 是数据库入口：默认打开 Windows `%LOCALAPPDATA%\sdms\schedules.db`（未设环境变量时 `~/AppData/Local`）、macOS `~/Library/Application Support/sdms/schedules.db`、Linux `$XDG_DATA_HOME/sdms/schedules.db`（未设时 `~/.local/share`），自动创建父目录并返回连接；GUI 入口按 `composition.connect() -> composition.build_service(connection) -> MainWindow` 接线，连接由入口在 `finally` 中关闭，且只在 GUI 线程使用。`application.contracts.ScheduleUseCases` 是前端必须对齐的服务协议。
+
+存储层测试命令：
+
+```text
+uv sync --frozen --dev
+uv run pytest tests/unit tests/contract tests/integration -q
+uv run pytest -q
+```
 
 ## 需求摘要
 
@@ -277,7 +290,7 @@ uv run pytest
 uv run pytest --cov=src --cov-report=term-missing
 ```
 
-测试命令在两个平台上完全一致。当前 `tests/` 已包含环境门禁测试 `tests/test_environment.py`，共 9 个用例，验证的是运行环境和打包配置，而不是业务功能：
+测试命令在两个平台上完全一致。当前 `tests/` 除环境门禁测试 `tests/test_environment.py`（9 个用例，验证运行环境和打包配置）外，还包括存储层的领域、契约和集成测试：
 
 | 测试 | 验证内容 |
 | --- | --- |
@@ -291,7 +304,7 @@ uv run pytest --cov=src --cov-report=term-missing
 
 环境门禁测试的作用：在三人各自的机器上，先把“环境或打包配置不对”和“业务代码不对”区分开。例如缺少 PySide6 时，失败信息会直接指出该跑 `uv sync`；`pyproject.toml` 的 src 布局被改坏时，会失败在导入测试而不是业务测试。路径断言使用 `pathlib` 的层级判断而不是字符串拼接，因此 Windows 的反斜杠也能正确通过。
 
-业务测试已经开始补充：界面层的交互规则（`test_controller.py` 23 项）、文案与错误映射（`test_presenters.py` 24 项）、分层守卫（`test_ui_layering.py` 33 项）、开发替身服务的边界（`test_dev_stub_service.py` 33 项），连同环境门禁 9 项，共 **122 项**。存储层用例见 `tests/contract/`、`tests/integration/` 与 `tests/unit/test_schedule.py`。GUI 结果与截图归档到 `docs/screenshots/`，环境与操作步骤见该目录下的 `README.md`。
+业务测试覆盖两层：界面层的交互规则（`test_controller.py` 23 项）、文案与错误映射（`test_presenters.py` 24 项）、分层守卫（`test_ui_layering.py` 33 项）、开发替身服务的边界（`test_dev_stub_service.py` 33 项），连同环境门禁 9 项，共 **122 项**；存储/服务层另有领域、契约、集成与服务编排测试（`tests/unit/test_schedule.py`、`tests/unit/test_service.py`、`tests/contract/`、`tests/integration/`）。当前 `main` + 本分支合流后全量 `234 passed`。GUI 结果与截图归档到 `docs/screenshots/`，环境与操作步骤见该目录下的 `README.md`。
 
 判断真实性的原则：如果某次运行显示 `collected 0 items`，那是“没有测试”而不是“测试通过”；测试通过必须有明确的 `N passed` 和退出码 0。
 
@@ -319,14 +332,14 @@ git status --short --branch
 | 依赖同步 | `uv sync --dev --locked` | 14 个包，锁文件无需变更 |
 | 锁文件一致性 | `uv lock --check` | 通过 |
 | 代码规范 | `uv run ruff check .` | `All checks passed!` |
-| 代码格式 | `uv run ruff format --check .` | `40 files already formatted` |
+| 代码格式 | `uv run ruff format --check .` | `64 files already formatted` |
 | 字节码编译 | `uv run python -m compileall -q src tests` | 通过 |
 | 项目包导入 | `uv run python -c "import schedule_management as m; print(m.__file__)"` | 成功，指向 `src/schedule_management/__init__.py` |
 | 构建分发文件 | `uv build` | 生成 `.whl` 与 `.tar.gz` |
 | PySide6 可用性 | `uv run python -c "import PySide6; print(PySide6.__version__)"` | 成功，6.12.0（Qt 6.12.0） |
 | 窗口创建与截图 | `uv run python scripts/shoot_ui.py` | 八个场景全通过，截图写入 `docs/screenshots/` |
-| 自动化测试 | `uv run pytest -q` | 界面层单独 `121 passed, 1 skipped`；与存储层/服务层合流后全量以实际运行为准 |
-| 类型检查 | `uv run mypy src tests` | `Success: no issues found in 20 source files` |
+| 自动化测试 | `uv run pytest -q` | `234 passed`（与存储层/服务层合流后全量） |
+| 类型检查 | `uv run mypy src tests` | `Success: no issues found in 42 source files` |
 
 关于这些结果，有一点必须如实说明，不能因为表里全是绿色就当成“功能已完成”：
 
