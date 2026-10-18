@@ -4,7 +4,9 @@
 
 ## 当前状态
 
-当前分支是存储层 + 服务层实现（`feature/application-service`，基于 `feature/sqlite-storage`）：已加入日程领域模型、仓储契约、SQLite 适配器、`application/service.py` 的服务编排与宽容解析，以及契约/集成/服务测试。图形界面尚未接入真服务：`ui/app.py` 仍注入 `DevStubScheduleService`，界面操作暂时不会写入 SQLite。
+骨架之外已经落地的是**界面层**：不与 GUI 运行库耦合的那部分（`view_models` / `ports` / `presenters` / `controller`，42 项单测）和 PySide6 窗口实现（`app` / `main_window` / `calendar_view` / `date_picker` / `schedule_form`）都已完成，程序能打开、能增删查改、能截图。
+
+存储层与服务层也已实现：领域模型、仓储契约、SQLite 适配器、`application/service.py` 的用例编排与宽容解析，以及契约/集成测试（见下节）。`ui/app.py` 仍注入 `DevStubScheduleService`，因此界面操作暂时不会写入 SQLite；把入口切到 `composition.build_service()` 并确定数据库文件位置后，V-14（重启后数据仍在）才能对用户验收。
 
 ## 存储层现状
 
@@ -12,11 +14,11 @@ SQLite 存储层已实现：
 
 - `src/schedule_management/domain/schedule.py`：日程领域对象，负责标题与 `id` 规范化、分钟级时间精度、备注类型等不变量；
 - `src/schedule_management/application/contracts.py`：`ScheduleRepository` 仓储契约；
-- `src/schedule_management/infrastructure/sqlite_repository.py`：SQLite 适配器（参数化 SQL、事务回滚、错误转换、按日期查询索引）。
+- `src/schedule_management/application/service.py`：`ScheduleService`，负责原始字符串解析、字段校验与仓储 `bool` 到 `ScheduleNotFoundError` 的翻译；
+- `src/schedule_management/infrastructure/sqlite_repository.py`：SQLite 适配器（参数化 SQL、事务回滚、错误转换、按日期查询索引）；
+- `src/schedule_management/composition.py`：`build_service(connection)`，唯一同时认识 application 与 infrastructure 的装配点。
 
-`tests/contract/` 用同一套用例同时验证内存实现与 SQLite 实现，`tests/integration/` 验证跨连接持久化与异常转换。
-
-服务层已实现：`application/service.py` 负责原始字符串解析、字段校验，并把仓储的 `update`/`delete` 返回的 `False` 翻译成 `ScheduleNotFoundError`；`composition.build_service(connection)` 是唯一装配点。入口尚未切换，因此 SQLite 还没有界面调用方，V-14（重启后数据仍在）尚未对用户验收；数据库文件位置由入口决定。仓储只接收调用方注入的 `sqlite3.Connection`，并且不会修改该连接的 `row_factory`。
+`tests/contract/` 用同一套用例同时验证内存实现与 SQLite 实现，`tests/integration/` 验证跨连接持久化与异常转换。仓储只接收调用方注入的 `sqlite3.Connection`，并且不会修改该连接的 `row_factory`。
 
 `composition.connect()` 是数据库入口：默认打开 Windows `%LOCALAPPDATA%\sdms\schedules.db`（未设环境变量时 `~/AppData/Local`）、macOS `~/Library/Application Support/sdms/schedules.db`、Linux `$XDG_DATA_HOME/sdms/schedules.db`（未设时 `~/.local/share`），自动创建父目录并返回连接；GUI 入口按 `composition.connect() -> composition.build_service(connection) -> MainWindow` 接线，连接由入口在 `finally` 中关闭，且只在 GUI 线程使用。`application.contracts.ScheduleUseCases` 是前端必须对齐的服务协议。
 
@@ -49,7 +51,10 @@ uv run pytest -q
 ├── uv.lock                   # uv 依赖锁定文件
 ├── .python-version           # Python 3.12
 ├── src/
-│   ├── schedule_management/  # 应用包（已可安装，业务模块待实现）
+│   ├── schedule_management/  # 应用包（已可安装）
+│   │   ├── ui/               # 界面层：交互规则 + PySide6 窗口实现
+│   │   └── dev_stub_service.py  # 内存替身服务，让界面暂不依赖后端
+├── scripts/                  # 环境探测（qt_probe.py）与界面截图（shoot_ui.py）
 │   └── lib/                  # 课程要求的第三方包随源代码提交位置
 ├── tests/                    # 自动化测试
 └── docs/
@@ -164,17 +169,9 @@ source .venv/bin/activate
 
 日常建议直接用 `uv run <命令>`，它会自动使用 `.venv`，不必先激活；这样也不会误用系统 Python。
 
-4. Tkinter 不需要额外安装系统包。uv 下载的 CPython 自带 Tcl/Tk，本机实测 `import tkinter` 成功，Tk 版本 9.0。只有改用系统 Python（而非 uv 环境）时，才需要安装发行版包，例如 Debian/Ubuntu 的 `python3-tk`。
+4. 图形界面依赖 PySide6（第三方包，由 uv 管理），`uv sync` 之后即可使用。本机实测版本 **PySide6 6.12.0 / Qt 6.12.0**，包目录约 646.7 MB，首次安装耗时较长。GUI 目标平台是 Windows，不做 Linux 端的界面适配（理由见 `docs/figures/ui-interaction.md` 第 1.1 节与第 11 节）。
 
-5. 图形界面需要 X11 或 Wayland 会话，检查显示环境：
-
-```bash
-echo "$DISPLAY $WAYLAND_DISPLAY"
-```
-
-本机结果：`DISPLAY=:0`、`WAYLAND_DISPLAY=wayland-0`，窗口可以正常创建。在服务器、容器或无 X 转发的环境下无法显示窗口，此时不要把“GUI 起不来”当成业务代码错误。
-
-6. 截图可用 `gnome-screenshot`、Wayland 下的 `grim` 或 ImageMagick 的 `import`，保存到 `docs/screenshots/`。
+5. 图形界面的目标平台是 Windows，Linux 上不适配、不保证能起窗口。命令行部分（测试、类型检查、lint）在 Linux 上不受影响——它们不需要显示环境。
 
 ### 两个平台的差异对照
 
@@ -185,7 +182,7 @@ echo "$DISPLAY $WAYLAND_DISPLAY"
 | 虚拟环境解释器 | `.venv\Scripts\python.exe` | `.venv/bin/python` |
 | 激活命令 | `.\.venv\Scripts\Activate.ps1` | `source .venv/bin/activate` |
 | 终端编码 | 旧版 PowerShell 需 `chcp 65001` | 通常已是 UTF-8 |
-| 图形显示 | 桌面会话 | 需要 `DISPLAY` 或 `WAYLAND_DISPLAY` |
+| 图形显示 | 桌面会话，界面可用 | 命令行可用，**界面不适配**（在另一台机器上冒烟过 PySide6 能起来，但不承诺支持） |
 | 截图工具 | Win + Shift + S | gnome-screenshot / grim / import |
 
 结论：平台差异只影响“怎么装、怎么激活、怎么截图”，不影响“怎么写代码、怎么测试”。任何人都不应把只适用于自己系统的变体写进 README 的通用命令。
@@ -196,12 +193,12 @@ echo "$DISPLAY $WAYLAND_DISPLAY"
 | --- | --- |
 | `uv: command not found` | 确认安装目录在 PATH，并重开终端 |
 | 命令用了系统 Python | 统一改用 `uv run <命令>`；确认 `uv run python` 打印的是 `.venv` 内路径 |
-| `import tkinter` 失败 | 确认在 uv 环境中；若确实用系统 Python 则安装 `python3-tk` |
+| `import PySide6` 失败 | 在仓库根目录运行 `uv sync` 安装运行时依赖；不要在全局环境里 pip install |
 | GUI 窗口打不开 | 检查显示环境；无桌面时改用自动化测试或由有桌面的成员截图 |
 | 依赖安装失败 | 检查网络与 pypi 可达性，不要用全局 pip 绕过 |
 | `uv.lock` 合并冲突 | 不要手改 `uv.lock`，交给 uv 重新解析并评审差异 |
 
-本项目的依赖声明以 `pyproject.toml` 为准，精确解析结果以 `uv.lock` 为准。GUI 框架尚未在团队层面正式选定，计划中的推荐方案是 Tkinter/ttk（标准库，无第三方运行时依赖），本机已验证可用；最终选型及理由应记录在设计文档中。
+本项目的依赖声明以 `pyproject.toml` 为准，精确解析结果以 `uv.lock` 为准。GUI 框架已选定 **PySide6**（`>=6.11.2,<7.0`，桌面端只做 Windows），存储用标准库 `sqlite3`；选型理由、平台范围与前后端接缝记录在 `docs/figures/ui-interaction.md` 第 1.1、11 节。
 
 ### 项目包与可安装布局
 
@@ -263,19 +260,26 @@ uv run mypy src
 
 ## 运行
 
-业务入口将在实现阶段确定，并同步更新本节。统一使用 uv 执行，避免调用错误的全局 Python：
+图形界面已经可以真的打开。统一使用 uv 执行，避免调用错误的全局 Python：
 
-```text
-uv run <项目启动命令>
+```bash
+uv sync                                   # 首次需要下载 PySide6（约 650 MB）
+uv run python -m schedule_management.ui.app
 ```
 
-平台相关提醒：
+Windows 上若不想同时弹出控制台窗口，可用 `pythonw`；调试阶段仍建议保留控制台以便看到日志。
 
-- 两个平台都使用同一个启动命令，不要为 Windows 单独写一套入口。
-- Windows 上如果用窗口方式启动，可用 `pythonw` 避免弹出控制台窗口；调试阶段仍建议保留控制台以便看到日志。
-- Linux 上启动 GUI 前确认显示环境可用（见“环境配置”中的检查命令）。
+Linux 端不再作为 GUI 验收平台：图形界面只做 Windows（见 `docs/figures/ui-interaction.md` 第 1.1 节）。Linux 上仍可跑测试、静态检查与后端代码。
 
-当前 `schedule_management` 包已经可以导入，但图形界面和 `__main__.py` 都还不存在，因此没有可运行的启动命令，也不能以占位入口宣称系统已完成。
+需要复现 `docs/screenshots/` 里的图，或把可机器判定的验收项跑一遍：
+
+```bash
+uv run python scripts/shoot_ui.py         # 必须在有桌面的 Windows 会话里跑
+```
+
+离屏模式（`QT_QPA_PLATFORM=offscreen`）在这台机器上解析不到中文字体，截图里的中文全是方块，因此**离屏只用来验证窗口能否创建，不能用来出图**。
+
+**当前跑在内存替身服务上。** `src/schedule_management/dev_stub_service.py` 让界面在后端落地之前就能被使用和验收，但它**不做持久化**——退出程序数据即丢。真正的存储要等 SQLite 实现，届时只需替换 `ui/app.py` 里 `build_service()` 这一处注入。不要因为“能增删查改”就误判系统已完成。
 
 ## 测试
 
@@ -292,14 +296,15 @@ uv run pytest --cov=src --cov-report=term-missing
 | --- | --- |
 | `test_python_version_meets_requirement` | Python 版本满足 `requires-python >= 3.12` |
 | `test_running_inside_virtual_environment` | 测试确实运行在虚拟环境内，而不是系统 Python |
-| `test_required_stdlib_module_importable` | `tkinter`、`sqlite3`、`datetime`、`calendar` 能被真正导入 |
+| `test_required_stdlib_module_importable` | `sqlite3`、`datetime`、`calendar` 能被真正导入 |
+| `test_gui_framework_is_importable` | PySide6 能真正导入且版本落在 `>=6.11.2,<7.0` 区间内 |
 | `test_sqlite3_can_open_in_memory_database` | 能打开内存 SQLite 库并执行一次查询 |
 | `test_project_package_is_importable` | 项目包可导入，且 editable 指向仓库 `src/` 目录 |
 | `test_installed_version_matches_package_version` | 分发版本与包内 `__version__` 一致，防止两处漂移 |
 
-环境门禁测试的作用：在三人各自的 Windows / Linux 机器上，先把“环境或打包配置不对”和“业务代码不对”区分开。例如缺少 Tkinter 时，失败信息会直接指出解释器路径；`pyproject.toml` 的 src 布局被改坏时，会失败在导入测试而不是业务测试。路径断言使用 `pathlib` 的层级判断而不是字符串拼接，因此 Windows 的反斜杠也能正确通过。
+环境门禁测试的作用：在三人各自的机器上，先把“环境或打包配置不对”和“业务代码不对”区分开。例如缺少 PySide6 时，失败信息会直接指出该跑 `uv sync`；`pyproject.toml` 的 src 布局被改坏时，会失败在导入测试而不是业务测试。路径断言使用 `pathlib` 的层级判断而不是字符串拼接，因此 Windows 的反斜杠也能正确通过。
 
-服务层和界面的业务测试（原始字符串解析、未选中记录、删除确认和异常提示）尚未编写，由后续模块作者补充。约定位置为 `tests/unit/`、`tests/contract/`、`tests/integration/`。GUI 测试结果与截图归档到 `docs/screenshots/`，并记录操作系统与 Python/Tk 版本、前置数据、操作步骤、预期结果和实际结果。
+业务测试覆盖两层：界面层的交互规则（`test_controller.py` 23 项）、文案与错误映射（`test_presenters.py` 24 项）、分层守卫（`test_ui_layering.py` 33 项）、开发替身服务的边界（`test_dev_stub_service.py` 33 项），连同环境门禁 9 项，共 **122 项**；存储/服务层另有领域、契约、集成与服务编排测试（`tests/unit/test_schedule.py`、`tests/unit/test_service.py`、`tests/contract/`、`tests/integration/`）。当前 `main` + 本分支合流后全量 `234 passed`。GUI 结果与截图归档到 `docs/screenshots/`，环境与操作步骤见该目录下的 `README.md`。
 
 判断真实性的原则：如果某次运行显示 `collected 0 items`，那是“没有测试”而不是“测试通过”；测试通过必须有明确的 `N passed` 和退出码 0。
 
@@ -327,23 +332,24 @@ git status --short --branch
 | 依赖同步 | `uv sync --dev --locked` | 14 个包，锁文件无需变更 |
 | 锁文件一致性 | `uv lock --check` | 通过 |
 | 代码规范 | `uv run ruff check .` | `All checks passed!` |
-| 代码格式 | `uv run ruff format --check .` | `17 files already formatted` |
+| 代码格式 | `uv run ruff format --check .` | `64 files already formatted` |
 | 字节码编译 | `uv run python -m compileall -q src tests` | 通过 |
 | 项目包导入 | `uv run python -c "import schedule_management as m; print(m.__file__)"` | 成功，指向 `src/schedule_management/__init__.py` |
 | 构建分发文件 | `uv build` | 生成 `.whl` 与 `.tar.gz` |
-| Tkinter 可用性 | `uv run python -c "import tkinter; print(tkinter.TkVersion)"` | 成功，Tk 9.0 |
-| 窗口创建 | `tkinter.Tk()` 后 `destroy()` | 成功（`DISPLAY=:0`） |
-| 自动化测试 | `uv run pytest -q` | `9 passed`，退出码 0 |
-| 类型检查 | `uv run mypy src` | `Success: no issues found in 1 source file` |
+| PySide6 可用性 | `uv run python -c "import PySide6; print(PySide6.__version__)"` | 成功，6.12.0（Qt 6.12.0） |
+| 窗口创建与截图 | `uv run python scripts/shoot_ui.py` | 八个场景全通过，截图写入 `docs/screenshots/` |
+| 自动化测试 | `uv run pytest -q` | `234 passed`（与存储层/服务层合流后全量） |
+| 类型检查 | `uv run mypy src tests` | `Success: no issues found in 42 source files` |
 
-关于这些结果，有两点必须如实说明，不能因为表里全是绿色就当成“功能已完成”：
+关于这些结果，有一点必须如实说明，不能因为表里全是绿色就当成“功能已完成”：
 
-- 类型检查虽然已经真实运行，但目前只检查了 `schedule_management/__init__.py` 这一个文件，里面只有包说明和版本号。它证明的是“门禁通路已经打通”，还不能证明业务代码的类型正确性；深度取决于后续模块。
-- 自动化测试的 9 个用例全部属于环境与打包门禁，没有任何业务行为断言。日程的新增、查询、修改、删除仍未被测试覆盖。
+- **122 项测试覆盖的是界面层**：交互规则、文案与错误映射、分层守卫、替身服务的边界。它们证明界面交互是对的，**但不证明数据能存住**——持久化不在界面层测试范围内，由存储层的契约/集成测试覆盖。
+- 同理，`shoot_ui.py` 的八个场景跑在**内存替身**上。窗口正确地显示了 3 条日程，不代表 SQLite 里真的有这 3 条。
+- 后端三层（domain / application / infrastructure）一旦落地，必须补 `tests/contract/` 与 `tests/integration/`，并在真数据上重跑 V-14「重启后数据仍在」。
 
 Windows 环境结果待拥有 Windows 设备的成员按“Windows 开发环境”步骤执行后补充，请勿照抄上面的数据。
 
-业务完成后的结果应补充功能清单、测试数量与通过情况、已知限制和运行截图；不要把“工程骨架已建立”写成“功能已实现”。
+业务完成后的结果应补充功能清单、测试数量与通过情况、已知限制和运行截图；不要把“门禁全绿”写成“功能已实现”。
 
 ## GitHub 多人协作快速指南
 

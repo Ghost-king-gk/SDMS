@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 524" width="680" height="524" role="img" font-family="'Microsoft YaHei','PingFang SC','Noto Sans CJK SC',sans-serif">
+<title>选中日程后点击删除的确认与取消分支</title>
+<desc>取消分支不调用服务且列表不变，确定分支才调用删除服务并处理结果。</desc>
+<rect x="0" y="0" width="680" height="524" fill="#FFFFFF"/>
+<defs>
+  <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+<text x="40" y="34" font-size="14" font-weight="500" fill="#2C2C2A" text-anchor="start">流程 B：选中 → 确认 → 取消</text>
+<rect x="170" y="50" width="340" height="56" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<text x="340.0" y="69.0" font-size="14" font-weight="500" fill="#0C447C" text-anchor="middle" dominant-baseline="central">选中一条日程</text>
+<text x="340.0" y="88.0" font-size="12" font-weight="400" fill="#185FA5" text-anchor="middle" dominant-baseline="central">selected = 该行关联的 schedule_id</text>
+<path d="M340 106 L340 138" fill="none" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#ar)"/>
+<rect x="170" y="146" width="340" height="56" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
+<text x="340.0" y="165.0" font-size="14" font-weight="500" fill="#633806" text-anchor="middle" dominant-baseline="central">点击「删除」→ 弹出确认框</text>
+<text x="340.0" y="184.0" font-size="12" font-weight="400" fill="#854F0B" text-anchor="middle" dominant-baseline="central">此刻仍未调用任何服务</text>
+<path d="M340 202 L340 222 L185 222 L185 234" fill="none" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#ar)"/>
+<path d="M340 202 L340 222 L495 222 L495 234" fill="none" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#ar)"/>
+<rect x="40" y="242" width="290" height="56" rx="8" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.5"/>
+<text x="185.0" y="261.0" font-size="14" font-weight="500" fill="#791F1F" text-anchor="middle" dominant-baseline="central">点「取消」</text>
+<text x="185.0" y="280.0" font-size="12" font-weight="400" fill="#A32D2D" text-anchor="middle" dominant-baseline="central">对话框关闭，流程终止</text>
+<rect x="350" y="242" width="290" height="56" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/>
+<text x="495.0" y="261.0" font-size="14" font-weight="500" fill="#27500A" text-anchor="middle" dominant-baseline="central">点「确定」</text>
+<text x="495.0" y="280.0" font-size="12" font-weight="400" fill="#3B6D11" text-anchor="middle" dominant-baseline="central">才真正发起删除</text>
+<path d="M185 298 L185 330" fill="none" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#ar)"/>
+<path d="M495 298 L495 330" fill="none" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#ar)"/>
+<rect x="40" y="338" width="290" height="56" rx="8" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.5"/>
+<text x="185.0" y="357.0" font-size="14" font-weight="500" fill="#791F1F" text-anchor="middle" dominant-baseline="central">列表与数据不变</text>
+<text x="185.0" y="376.0" font-size="12" font-weight="400" fill="#A32D2D" text-anchor="middle" dominant-baseline="central">service.delete 未被调用</text>
+<rect x="350" y="338" width="290" height="56" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/>
+<text x="495.0" y="357.0" font-size="14" font-weight="500" fill="#27500A" text-anchor="middle" dominant-baseline="central">调用 service.delete(id)</text>
+<text x="495.0" y="376.0" font-size="12" font-weight="400" fill="#3B6D11" text-anchor="middle" dominant-baseline="central">存在性由服务层校验</text>
+<path d="M495 394 L495 426" fill="none" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#ar)"/>
+<rect x="350" y="434" width="290" height="56" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/>
+<text x="495.0" y="453.0" font-size="14" font-weight="500" fill="#27500A" text-anchor="middle" dominant-baseline="central">成功 → 刷新列表</text>
+<text x="495.0" y="472.0" font-size="12" font-weight="400" fill="#3B6D11" text-anchor="middle" dominant-baseline="central">失败 → 提示并保留原状</text>
+<text x="340" y="512" font-size="12" font-weight="400" fill="#5F5E5A" text-anchor="middle" dominant-baseline="central">删除确认是交互策略，不能替代服务层的存在性校验</text>
+</svg>

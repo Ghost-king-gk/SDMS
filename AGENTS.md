@@ -58,7 +58,8 @@
 
 ## 4. 实现约束
 
-- GUI 框架在实现阶段从 Tkinter 或 PyQt 中二选一，并在设计文档中记录选型理由；本次骨架不预装 GUI 框架。
+- GUI 框架已定为 **PySide6（Qt for Python）**，`pyproject.toml` 声明 `PySide6>=6.11.2,<7.0`，由 `uv.lock` 定版；选型理由见 `docs/figures/ui-interaction.md` 1.1 节。本项目目标平台为 Windows，Linux 端不适配。
+- 窗口代码（`ui/app.py`、`main_window.py`、`calendar_view.py`、`date_picker.py`、`schedule_form.py`）是唯一允许 import `PySide6` 的界面模块，且**只做呈现适配**；交互规则一律留在 `ui/controller.py` 与 `ui/presenters.py`，由 `tests/unit/test_ui_layering.py` 用 AST 扫描强制。
 - 日期和时间统一使用 `datetime` 及明确的格式化/解析策略，避免用不透明字符串进行核心比较。
 - 外部输入和界面输入必须校验；错误应转换为用户可理解的提示，不向界面泄露无关的堆栈信息。
 - 日程的新增、查询、修改、删除都要有可测试的边界条件，尤其是空标题、非法日期时间、未选中日程、重复操作和删除确认。

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 424" width="680" height="424" role="img" font-family="'Microsoft YaHei','PingFang SC','Noto Sans CJK SC',sans-serif">
+<title>未选中日程时点击删除的状态变化</title>
+<desc>从空闲态到提示后回到空闲态，全程不调用删除服务。</desc>
+<rect x="0" y="0" width="680" height="424" fill="#FFFFFF"/>
+<defs>
+  <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+<text x="40" y="34" font-size="14" font-weight="500" fill="#2C2C2A" text-anchor="start">流程 A：未选中 → 点击删除</text>
+<rect x="170" y="50" width="340" height="56" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<text x="340.0" y="69.0" font-size="14" font-weight="500" fill="#2C2C2A" text-anchor="middle" dominant-baseline="central">空闲态</text>
+<text x="340.0" y="88.0" font-size="12" font-weight="400" fill="#5F5E5A" text-anchor="middle" dominant-baseline="central">列表选中项 selected = None</text>
+<path d="M340 106 L340 138" fill="none" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#ar)"/>
+<rect x="170" y="146" width="340" height="56" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<text x="340.0" y="165.0" font-size="14" font-weight="500" fill="#2C2C2A" text-anchor="middle" dominant-baseline="central">用户点击「删除」</text>
+<text x="340.0" y="184.0" font-size="12" font-weight="400" fill="#5F5E5A" text-anchor="middle" dominant-baseline="central">controller 先读 selected</text>
+<path d="M340 202 L340 234" fill="none" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#ar)"/>
+<rect x="170" y="242" width="340" height="56" rx="8" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.5"/>
+<text x="340.0" y="261.0" font-size="14" font-weight="500" fill="#791F1F" text-anchor="middle" dominant-baseline="central">提示：请先选择一条日程</text>
+<text x="340.0" y="280.0" font-size="12" font-weight="400" fill="#A32D2D" text-anchor="middle" dominant-baseline="central">不调用 service.delete</text>
+<path d="M340 298 L340 330" fill="none" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#ar)"/>
+<rect x="170" y="338" width="340" height="56" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/>
+<text x="340.0" y="357.0" font-size="14" font-weight="500" fill="#2C2C2A" text-anchor="middle" dominant-baseline="central">回到空闲态</text>
+<text x="340.0" y="376.0" font-size="12" font-weight="400" fill="#5F5E5A" text-anchor="middle" dominant-baseline="central">列表与存储数据均不变</text>
+<text x="340" y="406" font-size="12" font-weight="400" fill="#5F5E5A" text-anchor="middle" dominant-baseline="central">整条链路零次服务调用：未选中是界面状态问题，不是业务错误</text>
+</svg>

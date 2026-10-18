@@ -4,7 +4,10 @@ version = "0.1.0"
 description = "Python 图形化日程管理系统课程项目"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+# PySide6 是唯一的运行时第三方依赖，GUI 只做 Windows 桌面端。
+# 版本上限取 <7.0：Qt 7 一旦发布会带来破坏性改动，升级要走单独的 PR 说明原因。
+# 注意：声明依赖不等于把二进制整包入库，那个课程合规问题另行处理。
+dependencies = ["PySide6>=6.11.2,<7.0"]
 
 [dependency-groups]
 dev = [
