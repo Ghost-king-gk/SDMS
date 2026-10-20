@@ -94,6 +94,7 @@ def to_row(item: ScheduleLike) -> ScheduleRow:
         time_text=format_time(item.time),
         title_text=item.title,
         notes_text=item.notes,
+        all_day=item.time is None,
     )
 
 

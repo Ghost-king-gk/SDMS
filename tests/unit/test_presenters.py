@@ -64,12 +64,14 @@ def test_to_row_keeps_id_alongside_display_text() -> None:
 
     assert row.schedule_id == "id-1", "行必须携带 id，否则后续操作只能靠行号或标题反查"
     assert (row.time_text, row.title_text, row.notes_text) == ("09:05", "写周报", "给导师")
+    assert row.all_day is False, "定时日程不能被误标成全天"
 
 
 def test_to_row_renders_all_day_row() -> None:
     row = presenters.to_row(a_schedule(at=None))
 
     assert row.time_text == "全天"
+    assert row.all_day is True, "展示文本之外还要带语义标记，回填表单时才能还原成空时间"
     assert (row.title_text, row.notes_text) == ("写周报", "给导师")
 
 
