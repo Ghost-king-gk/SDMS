@@ -66,8 +66,8 @@ _CARD_MARGIN: Final = 16
 _OUTER_MARGIN: Final = 18
 _SEARCH_DEBOUNCE_MS: Final = 250
 _SEARCH_INPUT_WIDTH: Final = 210
-_UPCOMING_MIN_HEIGHT: Final = 140
-_UPCOMING_MAX_HEIGHT: Final = 210
+_UPCOMING_MIN_HEIGHT: Final = 110
+_UPCOMING_MAX_HEIGHT: Final = 170
 
 _BUTTONS: Final = (
     ("create", "新增", "新增一条日程"),
@@ -193,11 +193,8 @@ class MainWindow(QMainWindow):
         calendar_layout = QVBoxLayout(calendar_card)
         calendar_layout.setContentsMargins(_CARD_MARGIN, _CARD_MARGIN, _CARD_MARGIN, _CARD_MARGIN)
         calendar_layout.setSpacing(10)
+        # 摘要不再塞进左卡片：日历拿到整张卡片的高度，日期行与徽标才有呼吸空间。
         calendar_layout.addWidget(self._calendar, 1)
-        upcoming_title = QLabel(_SECTION_UPCOMING, calendar_card)
-        upcoming_title.setObjectName("SectionTitle")
-        calendar_layout.addWidget(upcoming_title)
-        calendar_layout.addWidget(self._upcoming_list)
 
         right_card = QFrame(self)
         right_card.setObjectName("Card")
@@ -211,6 +208,12 @@ class MainWindow(QMainWindow):
         title_row.addWidget(self._clear_search_button)
         right_layout.addLayout(title_row)
         right_layout.addWidget(self._table, 1)
+
+        # 摘要放在表格下方：搜索态下右侧只剩两行结果，原来那段空白正好被摘要填上。
+        upcoming_title = QLabel(_SECTION_UPCOMING, right_card)
+        upcoming_title.setObjectName("SectionTitle")
+        right_layout.addWidget(upcoming_title)
+        right_layout.addWidget(self._upcoming_list)
 
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
         splitter.setChildrenCollapsible(False)
