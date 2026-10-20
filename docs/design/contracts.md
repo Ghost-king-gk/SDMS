@@ -25,18 +25,28 @@ composition.py（包根，唯一同时认识 application 与 infrastructure 的�
 此协议，不再维护第二份签名（见第 9 节）。
 
 ```python
+class ScheduleView(Protocol):
+    """界面可见的一条日程：五个只读属性；``time`` 为 ``None`` 表示全天。"""
+
+    id: str
+    title: str
+    date: dt.date
+    time: dt.time | None
+    notes: str
+
+
 @runtime_checkable
 class ScheduleUseCases(Protocol):
-    def list_schedules(self, day: dt.date) -> list[Schedule]: ...
+    def list_schedules(self, day: dt.date) -> Sequence[ScheduleView]: ...
     def create_schedule(
         self, title: str, date_text: str, time_text: str, notes: str
-    ) -> Schedule: ...
+    ) -> ScheduleView: ...
     def update_schedule(
         self, schedule_id: str, title: str, date_text: str, time_text: str, notes: str
-    ) -> Schedule: ...
+    ) -> ScheduleView: ...
     def delete_schedule(self, schedule_id: str) -> None: ...
     def count_by_date(self, start: dt.date, end: dt.date) -> dict[dt.date, int]: ...
-    def search_schedules(self, text: str) -> list[Schedule]: ...
+    def search_schedules(self, text: str) -> Sequence[ScheduleView]: ...
 
 
 class ScheduleService(ScheduleUseCases):
@@ -46,13 +56,14 @@ class ScheduleService(ScheduleUseCases):
 - `create_schedule` / `update_schedule` 接收**用户原样输入的字符串**日期与时间，解析归服务层
   （这是相对早期草案的唯一偏差，已由界面负责人确认）。界面不预解析、不抢先校验。
 - `time_text` **留空表示全天日程**，服务层保存 `Schedule.time=None`；`date_text` 仍必填。
-- `list_schedules` 接收 `dt.date`（来自日历点选），返回 `list[Schedule]`；无记录返回空列表。
+- `list_schedules` 接收 `dt.date`（来自日历点选），返回 `Sequence[ScheduleView]`；无记录返回空列表。
 - `count_by_date(start, end)` 返回闭区间内每个有日程的日期及条数（`dict[date, int]`）：
   日历底色用键，当天条数徽标用值；空区间或 `start > end` 返回空字典。
 - `search_schedules(text)` 按标题或备注包含搜索；`text` 去空白后为空返回空列表，
   `%`、`_`、`\` 按字面量匹配；结果按日期、全天在前、时间、id 排序。
 - `update_schedule` 返回新对象但 **id 不变**；四个字段全量覆盖，不是增量补丁。
-- 返回值 `Schedule` 结构上满足界面 `ScheduleLike`（`id/title/date/time/notes` 五个只读属性）。
+- 返回值用 `ScheduleView` 协议（`id/title/date/time/notes` 五个只读属性，`time: dt.time | None`）；
+  领域 `Schedule` 结构上满足它，界面的 `ScheduleLike` 就是 `ScheduleView` 的别名，不是第二份定义。
 - `ScheduleUseCases` 是唯一权威协议名；UI 的 `ScheduleServicePort` 只是它的别名，不是第二份定义。
 - `composition.build_service(connection) -> ScheduleService` 是唯一装配点；连接归调用方所有。
 
@@ -157,16 +168,19 @@ uv run mypy src tests
 `ui/ports.py` 的 `ScheduleServicePort` 必须直接引用后端协议，不再复制/改写六个方法：
 
 ```python
-from schedule_management.application.contracts import ScheduleUseCases
+from schedule_management.application.contracts import ScheduleUseCases, ScheduleView
 
 #: 服务端口就是后端权威协议，不再维护第二份定义。
 ScheduleServicePort = ScheduleUseCases
+
+#: 界面侧的日程形状同样别名到后端协议，presenters / 测试替身共用同一个类型。
+ScheduleLike = ScheduleView
 ```
 
 - 不要保留 `Sequence[ScheduleLike]` 版本的服务方法重新声明；`list[Schedule]` 是
-  `Sequence[ScheduleLike]` 的子类型，`Schedule` 结构上满足 `ScheduleLike`，mypy 可直接通过。
-- `ScheduleLike` 可以继续留在 UI 侧供 `presenters.to_row` 使用，但**服务端口**只认
-  `ScheduleUseCases`。
+  `Sequence[ScheduleView]` 的子类型，`Schedule` 结构上满足 `ScheduleView`，mypy 可直接通过。
+- `ScheduleLike` 只是 `ScheduleView` 的别名，供 `presenters.to_row` 等界面代码沿用旧名；
+  **不得**再定义一份结构相同的 `Protocol`。
 - 需要新方法、新字段或修改签名时，先改 `application/contracts.py` 与本文档并走 PR；
   UI 侧不得先行扩展或本地兜底，避免两份签名再次漂移。
 

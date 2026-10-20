@@ -122,14 +122,15 @@ def test_error_category_knows_contract_names() -> None:
 
 def test_duplicate_is_classified_before_its_storage_error_base() -> None:
     """DuplicateScheduleError 是 StorageError 子类，必须先命中 Duplicate。"""
-    exc = DuplicateScheduleError("2026-10-15 09:30 已经有日程")
+    exc = DuplicateScheduleError("日程 ID 已存在：id-dup")
 
     assert isinstance(exc, StorageError), "替身必须继承 StorageError，才能验证判定顺序"
     assert presenters.error_category(exc) == "Duplicate"
 
     headline, message = presenters.describe_error(exc)
-    assert headline == "这条日程已经存在"
-    assert "换一个时间或先刷新列表，确认是不是已经保存过" in message
+    # 文案不能暗示"内容重复"：该分类只表示存储层 ID 主键冲突
+    assert headline == "保存冲突"
+    assert "刷新" in message
 
 
 def test_real_backend_error_classes_are_recognized() -> None:

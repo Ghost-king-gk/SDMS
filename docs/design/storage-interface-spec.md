@@ -18,6 +18,11 @@
 界面只通过 `ui/ports.py` 的 `ScheduleServicePort` 协议与服务层交互。
 签名如下（Python 类型标注即契约）：
 
+> **合流后的实现状态（2026-10）：** `ui/ports.py` 不再定义独立协议，
+> `ScheduleServicePort` / `ScheduleLike` 分别是 `application.contracts.ScheduleUseCases`
+> / `ScheduleView` 的别名；下面这段签名保留为界面侧的需求形状，
+> 权威定义以 `contracts.md` 第 2 节为准。
+
 ```python
 class ScheduleServicePort(Protocol):
     def list_schedules(self, day: dt.date) -> list[ScheduleLike]: ...
