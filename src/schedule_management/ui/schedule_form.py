@@ -49,7 +49,7 @@ class ScheduleForm(QDialog):
 
         self._title.setPlaceholderText("必填")
         self._date.setPlaceholderText("YYYY-MM-DD，也可以写 2026/10/15")
-        self._time.setPlaceholderText("留空 = 全天")
+        self._time.setPlaceholderText("HH:MM  留空 = 全天")
         self._notes.setPlaceholderText("选填")
 
         self._pick_button = QPushButton("选择", self)
