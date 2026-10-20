@@ -22,11 +22,12 @@ import datetime as dt
 from collections.abc import Mapping
 
 from PySide6.QtCore import QDate, QLocale, QRect, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPen, QTextCharFormat
+from PySide6.QtGui import QColor, QContextMenuEvent, QFont, QPainter, QPen, QTextCharFormat
 from PySide6.QtWidgets import (
     QCalendarWidget,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -225,6 +226,28 @@ class CalendarPanel(QWidget):
         self._dark = dark
         self._calendar.set_dark(dark)
         self._paint_formats()
+
+    # ------------------------------------------------------------ 右键菜单
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802
+        """日历空白处/日期格上右键：给「在这一天新增」与「回到今天」两个入口。
+
+        右键不要求改变当前选中日（`QCalendarWidget` 自己会处理日期格的右键），
+        因此菜单文案必须把**当前选中的日期**写出来，避免用户在别的日子上
+        右键、却按菜单新增到另一个日期。
+        """
+        self._build_context_menu().exec(event.globalPos())
+        event.accept()
+
+    def _build_context_menu(self) -> QMenu:
+        """菜单的构建单独拆出来，测试可以只检查菜单项而不进入模态循环。"""
+        day = self.selected_day()
+        menu = QMenu(self)
+        add_action = menu.addAction(f"在这一天新增（{presenters.date_heading(day)}）")
+        add_action.triggered.connect(lambda _checked=False: self.day_activated.emit(day))
+        today_action = menu.addAction("回到今天")
+        today_action.triggered.connect(self.go_today)
+        return menu
 
     # ------------------------------------------------------------------ 内部
 

@@ -54,6 +54,8 @@ class ScheduleController:
         self._selected_id: str | None = None
         self._rows: list[ScheduleRow] = []
         self._search_text = ""
+        # 最近一次成功删除的快照；只保留一份，新的删除覆盖旧的。
+        self._last_deleted: ScheduleDraft | None = None
 
     # ---------------------------------------------------------------- 只读状态
 
@@ -275,16 +277,27 @@ class ScheduleController:
         if row is None:
             return
 
-        day = row.date if row.date is not None else self._current_day
-        initial = ScheduleDraft(
-            title=row.title_text,
-            date_text=presenters.format_date(day) if day is not None else "",
-            time_text="" if row.all_day else row.time_text,
-            notes=row.notes_text,
-        )
         self._run_form(
-            FormRequest(mode="edit", heading="修改日程", initial=initial),
+            FormRequest(mode="edit", heading="修改日程", initial=self._draft_from_row(row)),
             schedule_id=row.schedule_id,
+        )
+
+    def request_duplicate(self) -> None:
+        """复制选中日程：用「新增」路径打开一份预填好的表单。
+
+        副本必须是**新记录**，所以走 `create` 而不是 `update`，也绝不把原
+        `schedule_id` 带过去。日期取行上的日期（搜索结果可跨天），没有时退回
+        当前筛选日期；全天日程的时间还原成空串，理由与修改相同。
+
+        标题与备注保留原文，用户可以改日期后再保存——这就是“复制到其他日期”
+        的用法，controller 不额外弹日期选择框。
+        """
+        row = self._require_selection()
+        if row is None:
+            return
+
+        self._run_form(
+            FormRequest(mode="create", heading="复制日程", initial=self._draft_from_row(row))
         )
 
     def request_delete(self) -> None:
@@ -292,6 +305,10 @@ class ScheduleController:
 
         确认框只是交互策略，替代不了服务层的校验：即便用户点了确定，
         记录不存在仍然是服务层要抛的错误，controller 不替它判断。
+
+        删除成功后把这一行压成 `ScheduleDraft` 快照，供「撤销删除」重建。
+        取消或失败时**不碰快照**：前者没有发生删除，后者数据还在，都不该
+        点亮撤销入口；已经存在的快照也不因此丢失。
         """
         row = self._require_selection()
         if row is None:
@@ -308,11 +325,54 @@ class ScheduleController:
             self._view.show_error(headline, message)
             return
 
+        self._last_deleted = self._draft_from_row(row)
+        self._view.show_undo_available(True)
         self._selected_id = None
         self.refresh()
         self._view.show_status(presenters.deleted_text(row.title_text))
 
+    def undo_delete(self) -> None:
+        """撤销最近一次删除：按快照重新 `create`，不恢复原 id。
+
+        新记录由服务层分配 id 是正确的：原 id 已经不存在，硬塞回去会和
+        存储层的主键约束打架，也会让“撤销”变成一次伪装的回滚。失败时保留
+        快照与撤销入口，用户可以处理完存储问题后再点一次。
+        """
+        draft = self._last_deleted
+        if draft is None:
+            self._view.show_info(presenters.undo_unavailable_text())
+            return
+
+        try:
+            saved = self._service.create_schedule(
+                draft.title, draft.date_text, draft.time_text, draft.notes
+            )
+        except Exception as exc:
+            headline, message = self._describe(exc, "撤销删除")
+            self._view.show_error(headline, message)
+            return
+
+        self._last_deleted = None
+        self._view.show_undo_available(False)
+        self.refresh()
+        self._view.show_status(presenters.undo_done_text(saved.title))
+
     # ---------------------------------------------------------------- 内部实现
+
+    def _draft_from_row(self, row: ScheduleRow) -> ScheduleDraft:
+        """把列表行还原成表单草稿：修改、复制、删除快照共用同一套规则。
+
+        日期优先取行上的 `date`；搜索结果跨天，用当前筛选日期回填会把记录
+        带到错误的一天。全天日程的 `time_text` 是展示文案“全天”，回填表单
+        必须是空串，否则服务层会把它当成非法时间。
+        """
+        day = row.date if row.date is not None else self._current_day
+        return ScheduleDraft(
+            title=row.title_text,
+            date_text=presenters.format_date(day) if day is not None else "",
+            time_text="" if row.all_day else row.time_text,
+            notes=row.notes_text,
+        )
 
     def _run_form(self, request: FormRequest, *, schedule_id: str | None = None) -> None:
         """反复打开表单，直到写入成功或用户主动取消。

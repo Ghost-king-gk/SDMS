@@ -15,11 +15,11 @@
 from __future__ import annotations
 
 import datetime as dt
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from html import escape
 from typing import Final
 
-from PySide6.QtCore import QSettings, Qt, QTimer
+from PySide6.QtCore import QPoint, QSettings, Qt, QTimer
 from PySide6.QtGui import QAction, QColor, QKeySequence, QPalette, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPushButton,
     QSplitter,
@@ -70,13 +71,22 @@ _UPCOMING_MIN_HEIGHT: Final = 110
 _UPCOMING_MAX_HEIGHT: Final = 170
 
 _BUTTONS: Final = (
-    ("create", "新增", "新增一条日程"),
-    ("view", "查看", "查看选中日程的详情"),
+    ("create", "新增", "新增一条日程（Ctrl+N）"),
+    ("view", "查看", "查看选中日程的详情（Enter）"),
     ("edit", "修改", "修改选中的日程"),
-    ("delete", "删除", "删除选中的日程"),
-    ("refresh", "刷新", "重新载入当前日期的日程"),
+    ("delete", "删除", "删除选中的日程（Delete）"),
+    ("duplicate", "复制", "复制选中的日程（Ctrl+D）"),
+    ("refresh", "刷新", "重新载入当前日期的日程（F5）"),
     ("quit", "退出", "退出程序"),
 )
+
+#: 窗口级快捷键。表格内的 Delete / Enter 另有 WidgetWithChildrenShortcut，
+#: 只在表格获得焦点时生效，不会在搜索框或表单里误触。
+_ACTION_SHORTCUTS: Final = {
+    "create": "Ctrl+N",
+    "duplicate": "Ctrl+D",
+    "refresh": "F5",
+}
 
 _TITLE_COLUMN_WIDTH: Final = 240
 _DATE_COLUMN_WIDTH: Final = 105
@@ -232,7 +242,13 @@ class MainWindow(QMainWindow):
 
         status = QStatusBar(self)
         status.addWidget(self._status_label, 1)
+        self._undo_button = QPushButton("撤销删除", self)
+        self._undo_button.setObjectName("UndoButton")
+        self._undo_button.setToolTip("恢复最近一次删除的日程")
         status.addPermanentWidget(self._selection_label)
+        status.addPermanentWidget(self._undo_button)
+        # QStatusBar 会在加入时显示子控件；这里再明确收起，启动时不出现空入口。
+        self._undo_button.setVisible(False)
         self.setStatusBar(status)
         status.setSizeGripEnabled(False)
 
@@ -247,6 +263,7 @@ class MainWindow(QMainWindow):
         self._table.setWordWrap(False)
         self._table.verticalHeader().setVisible(False)
         self._table.verticalHeader().setDefaultSectionSize(_ROW_HEIGHT)
+        self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 
         header = self._table.horizontalHeader()
         header.setFixedHeight(_HEADER_HEIGHT)
@@ -276,6 +293,11 @@ class MainWindow(QMainWindow):
         for key, text, tip in _BUTTONS:
             action = QAction(text, self)
             action.setToolTip(tip)
+            shortcut = _ACTION_SHORTCUTS.get(key)
+            if shortcut is not None:
+                action.setShortcut(QKeySequence(shortcut))
+                # 窗口级：主窗口激活时可用，不要求焦点在某个控件上。
+                action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
             toolbar.addAction(action)
             self._actions[key] = action
 
@@ -292,6 +314,7 @@ class MainWindow(QMainWindow):
         self._actions["view"].triggered.connect(self._on_view)
         self._actions["edit"].triggered.connect(self._on_edit)
         self._actions["delete"].triggered.connect(self._on_delete)
+        self._actions["duplicate"].triggered.connect(self._on_duplicate)
         self._actions["refresh"].triggered.connect(self._on_refresh)
         self._actions["quit"].triggered.connect(self.close)
         self._dark_action.toggled.connect(self._on_dark_toggled)
@@ -306,8 +329,24 @@ class MainWindow(QMainWindow):
         self._clear_search_button.clicked.connect(self._on_clear_search_clicked)
         self._search_timer.timeout.connect(self._trigger_search)
         self._upcoming_list.itemClicked.connect(self._on_upcoming_clicked)
+        self._table.customContextMenuRequested.connect(self._show_table_context_menu)
+        self._undo_button.clicked.connect(self._on_undo_delete)
         self._search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
         self._search_shortcut.activated.connect(self._focus_search)
+        # 只在表格和它的子控件获得焦点时生效：焦点在搜索框或表单里时，
+        # Delete 应当是编辑文本，绝不能变成删除整条日程。
+        self._table_shortcuts: tuple[QShortcut, ...] = (
+            self._make_table_shortcut("Delete", self._on_delete),
+            self._make_table_shortcut("Return", self._on_view),
+            self._make_table_shortcut("Enter", self._on_view),
+        )
+
+    def _make_table_shortcut(self, key: str, handler: Callable[[], None]) -> QShortcut:
+        """把表格内的按键绑成表格作用域快捷键。"""
+        shortcut = QShortcut(QKeySequence(key), self._table)
+        shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        shortcut.activated.connect(handler)
+        return shortcut
 
     # --------------------------------------------------- MainViewPort 实现
 
@@ -393,6 +432,10 @@ class MainWindow(QMainWindow):
     def show_status(self, text: str) -> None:
         self._status_label.setText(text)
 
+    def show_undo_available(self, available: bool) -> None:
+        """状态栏「撤销删除」入口的显隐；controller 决定什么时候还有可撤销的删除。"""
+        self._undo_button.setVisible(available)
+
     def show_month_counts(self, counts: dict[dt.date, int]) -> None:
         """把这个月「哪天有几条」交给日历去标记。"""
         self._calendar.set_counts(counts)
@@ -413,7 +456,8 @@ class MainWindow(QMainWindow):
         answer = QMessageBox.question(
             self,
             "确认删除",
-            f"确定要删除「{row.title_text}」（{row.time_text}）吗？\n删除之后无法撤销。",
+            f"确定要删除「{row.title_text}」（{row.time_text}）吗？\n"
+            "删除后状态栏会出现「撤销删除」，可恢复最近一次删除。",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -463,6 +507,12 @@ class MainWindow(QMainWindow):
 
     def _on_delete(self) -> None:
         self._controller.request_delete()
+
+    def _on_duplicate(self) -> None:
+        self._controller.request_duplicate()
+
+    def _on_undo_delete(self) -> None:
+        self._controller.undo_delete()
 
     def _on_refresh(self) -> None:
         """手动刷新列表；只有查询成功才宣称“已刷新”，失败时保留错误框与旧列表。"""
@@ -538,6 +588,47 @@ class MainWindow(QMainWindow):
             return None
         value = item.data(_ID_ROLE)
         return None if value is None else str(value)
+
+    def _show_table_context_menu(self, pos: QPoint) -> None:
+        """表格右键菜单：先选中被点的行，再弹菜单；空白处什么都不弹。
+
+        空白处不弹菜单是有意的：没有选中项时「修改/删除/复制」都没有意义，
+        弹一个全灰的菜单只会让人以为功能坏了。
+        """
+        if self._select_row_at(pos) is None:
+            return
+        self._build_row_menu().exec(self._table.viewport().mapToGlobal(pos))
+
+    def _select_row_at(self, pos: QPoint) -> str | None:
+        """把右键位置对应的行选中；空白、空状态提示行都返回 None。"""
+        index = self._table.indexAt(pos)
+        if not index.isValid():
+            return None
+        item = self._table.item(index.row(), 0)
+        if item is None:
+            return None
+        value = item.data(_ID_ROLE)
+        if value is None:
+            return None
+        schedule_id = str(value)
+        self._table.selectRow(index.row())
+        # 已经选中的行不会再发 itemSelectionChanged，这里显式同步一次。
+        self._controller.select_row(schedule_id)
+        return schedule_id
+
+    def _build_row_menu(self) -> QMenu:
+        """行菜单与工具栏共用同一批转发方法，入口不同、行为只有一份。"""
+        menu = QMenu(self._table)
+        entries = (
+            ("查看", self._on_view),
+            ("修改", self._on_edit),
+            ("删除", self._on_delete),
+            ("复制到…", self._on_duplicate),
+        )
+        for text, handler in entries:
+            action = menu.addAction(text)
+            action.triggered.connect(handler)
+        return menu
 
     def _show_empty_hint(self) -> None:
         """空状态不能是一片空白：一片空白会被当成程序坏了（第 4 节空状态）。
