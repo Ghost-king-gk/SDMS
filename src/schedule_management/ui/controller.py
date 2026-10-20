@@ -126,8 +126,24 @@ class ScheduleController:
         self._view.show_detail(row)
 
     def request_create(self) -> None:
-        """点击「新增」：打开空白表单，用户取消则什么都不发生。"""
-        self._run_form(FormRequest(mode="create", heading="新增日程"))
+        """点击顶部「新增」：打开空白表单，用户取消则什么都不发生。"""
+        self.request_create_for_day(None)
+
+    def request_create_for_day(self, day: dt.date | None) -> None:
+        """打开新增表单；给了日期就预填日期，其余字段留空。
+
+        双击日历某天走这条路径。`date_text` 只是表单初始文本，保存时
+        仍以原始字符串交给服务层解析，controller 不在这里做日期处理。
+        """
+        initial: ScheduleDraft | None = None
+        if day is not None:
+            initial = ScheduleDraft(
+                title="",
+                date_text=presenters.format_date(day),
+                time_text="",
+                notes="",
+            )
+        self._run_form(FormRequest(mode="create", heading="新增日程", initial=initial))
 
     def request_edit(self) -> None:
         """点击「修改」：必须有选中项，否则一次服务都不调用。
