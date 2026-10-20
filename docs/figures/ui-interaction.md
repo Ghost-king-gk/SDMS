@@ -52,13 +52,15 @@
 
 | 区域 | Qt 控件 | 职责 |
 | --- | --- | --- |
-| ① 日历选择区 | `QCalendarWidget` | 显示月历、跨月前后缀日期（控件内建）、切换月份、回到今天；有日程的日期显示底色与右上角条数徽标，今天以琥珀色加粗标记 |
-| ② 当前日期条 | `QLabel#DayHeading` | 显示当前筛选日期与当天日程条数；上方另有 `QLabel#TodayLabel` 显示「今天 · 日期 周几」 |
-| ③ 日程列表 | `QTableWidget` | 三列（时间 / 标题 / 备注），无网格、隔行底色、行高 36、表头 38；每行 `Qt.UserRole` 绑定 `schedule_id`，按时间、id 确定性排序 |
+| ① 日历选择区 | `QCalendarWidget` + `QLabel#SectionTitle` + `QListWidget#UpcomingList` | 显示月历、跨月前后缀日期（控件内建）、切换月份、回到今天；有日程的日期显示底色与右上角条数徽标，今天以琥珀色加粗标记；日历下方是「接下来 7 天」摘要，点击条目跳到对应日期并选中该日程 |
+| ② 当前日期条 | `QLabel#DayHeading` + `QLineEdit#SearchInput` + `QPushButton#ClearSearch` | 显示当前筛选日期与当天日程条数，上方另有 `QLabel#TodayLabel` 显示「今天 · 日期 周几」；搜索时标题改为「搜索“关键词” · 共 N 条」；右侧搜索框按标题/备注查全部日程，250 ms 防抖，回车立即搜索，`Ctrl+F` 聚焦，清空按钮回到当天 |
+| ③ 日程列表 | `QTableWidget` | **四列（日期 / 时间 / 标题 / 备注）**，无网格、隔行底色、行高 36、表头 38；日期列 105 px、时间列 90 px、标题列 240 px、备注列吃掉剩余宽度；每行 `Qt.UserRole` 绑定 `schedule_id`，按时间、id 确定性排序 |
 | ④ CRUD 工具栏 | `QToolBar` + `QAction` × 6 | 左侧品牌 `QLabel#Brand`，其后新增、查看、修改、删除、刷新、退出；最右侧是可勾选的「深色模式 / 浅色模式」开关，**统一置于画布上侧** |
 | ⑤ 状态栏 | `QStatusBar`（内含 `QLabel`） | 显示最近一次操作结果与当前选中项 |
 
 控件列的 Qt 类名是「推荐实现」，不是契约本身；契约是每行的职责与第 5 节的行为。换用 `QTableView + QAbstractTableModel` 这类 Model/View 写法同样允许，只要③的行为不变。
+
+**搜索与摘要的布局约束。** 搜索框放在②的右侧、与日期标题同一行，不占工具栏：它属于列表区的筛选条件，不是全局命令。输入只负责启动 250 ms 防抖计时器，查询永远经 `controller.set_search` 发出，窗口不直接调用服务。③ 的日期列是搜索跨日期的必要信息——没有它，用户无法判断一条结果属于哪一天，修改时也无从回填正确日期。① 下方的摘要列表固定显示今天起 7 天（含今天），空时用一条不可选中的占位项说明“未来 7 天没有日程”。
 
 配色与控件样式集中在 `ui/theme.py`，浅色 / 深色两套色板由 `stylesheet(dark)` 给出；`main_window.py` 负责套用 QSS 与 `QPalette`，`calendar_view.py` 从同一色板取日历自绘（今天、有日程底色、徽标）的颜色。深色不是「把白底换成黑底」：卡片比页面底色亮一档、边框再亮一档，正文与弱化文字分别保持可读对比度；今天在有日程时用浅琥珀底叠在蓝色标记之上，两个信息都保留。
 
@@ -159,6 +161,8 @@
 | V-19 | F-01 / 工程增强 | 查看当月日历，再翻到下个月 | 有日程的日期显示蓝色底色与右上角条数徽标（1–9 显示数字，超过 9 条显示 `9+`）；翻月后标记自动换成该月数据，不需要手动刷新 |
 | V-20 | F-01 | 启动程序，观察今天；再点「回到今天」 | 今天以琥珀色加粗标记（今天被选中时格底仍有琥珀短线），顶部显示「今天 · 日期 周几」；点「回到今天」筛回当天 |
 | V-21 | 工程增强 | 点工具栏「深色模式」，关闭程序后重新启动 | 立即切换为深色主题（按钮文字变为「浅色模式」）；重启后仍为深色，日历、表格、状态栏没有浅色残留 |
+| V-22 | F-03 / 工程增强 | 在搜索框输入「周报」并回车；再点「清空」 | 列表显示所有日期中标题或备注含「周报」的条目，每行日期列显示 `YYYY-MM-DD`，标题变为「搜索“周报” · 共 N 条」；选中其中一条点「修改」，日期回填为该行日期而不是当前筛选日期；点「清空」后搜索框为空、标题恢复当天日期、列表回到当天 |
+| V-23 | F-01 / 工程增强 | 观察左侧「接下来 7 天」列表，点击其中一条 | 列表按日期顺序显示今天起 7 天（含今天）的日程，条目形如 `10-20 周二 · 全天 · 整理课程笔记`；点击后右侧切到该日期并选中对应行；7 天内没有日程时显示「未来 7 天没有日程」而不是空白 |
 
 V-10 与 V-11 是界面层的**核心断言**，必须用测试替身验证「服务调用次数为 0」，不能只靠肉眼看列表没变。V-04 与 V-16 是一组对照：**同一个字段，能识别的写法直接通过，不能识别的才报错**——两条都要跑，才能证明界面确实没有在前端先行拦截。
 
@@ -168,14 +172,14 @@ V-10 与 V-11 是界面层的**核心断言**，必须用测试替身验证「�
 
 | 文件（未来路径） | 主要 Qt 类型 | 承接本文 | 状态 |
 | --- | --- | --- | --- |
-| `ui/view_models.py` | （无控件，纯数据） | 行模型、表单草稿与打开表单的上下文 | 已落地 |
-| `ui/ports.py` | （无控件，Protocol） | 界面与外部世界的三个端口 | 已落地 |
-| `ui/presenters.py` | （无控件，纯函数） | 显示格式化、条数文案、错误到提示的映射 | 已落地 |
-| `ui/controller.py` | （无控件，纯协调） | 第 5 节全部：选中态、调用用例、错误转提示 | 已落地 |
-| `ui/main_window.py` | `QMainWindow`、`QToolBar`、`QStatusBar`、`QTableWidget`、`QLabel` | 第 3 节布局与事件接线；`MainViewPort` 的唯一 Qt 实现 | 已落地 |
+| `ui/view_models.py` | （无控件，纯数据） | 行模型（含 `date` 字段）、表单草稿与打开表单的上下文 | 已落地 |
+| `ui/ports.py` | （无控件，Protocol） | 界面与外部世界的三个端口；`MainViewPort` 含搜索态、清空搜索与未来 7 天摘要输出 | 已落地 |
+| `ui/presenters.py` | （无控件，纯函数） | 显示格式化、条数文案、搜索标题/摘要条目文案、错误到提示的映射 | 已落地 |
+| `ui/controller.py` | （无控件，纯协调） | 第 5 节全部：选中态、调用用例、错误转提示；另含 `set_search` / `load_upcoming` / `select_upcoming` | 已落地 |
+| `ui/main_window.py` | `QMainWindow`、`QToolBar`、`QStatusBar`、`QTableWidget`、`QLabel`、`QLineEdit`、`QPushButton`、`QListWidget` | 第 3 节布局与事件接线（含搜索防抖、`Ctrl+F`、7 天摘要点击）；`MainViewPort` 的唯一 Qt 实现 | 已落地 |
 | `ui/app.py` | `QApplication` | 程序入口与依赖注入；进程唯一的 `QApplication` 实例在本模块的 `main()` 中创建 | 已落地 |
 | `ui/calendar_view.py` | `QCalendarWidget` | 第 3 节 ①，含周一起始、「回到今天」、今天高亮与「有日程」底色/条数徽标 | 已落地 |
-| `ui/theme.py` | （无控件，QSS 字符串与色板） | 第 3 节的配色、控件样式与浅/深两套主题；刻意不 import PySide6 | 已落地 |
+| `ui/theme.py` | （无控件，QSS 字符串与色板） | 第 3 节的配色、控件样式与浅/深两套主题（含搜索框、清空按钮、摘要列表）；刻意不 import PySide6 | 已落地 |
 | `ui/date_picker.py` | `QCalendarWidget` 包一层浮层 | 第 5.1 节日期选择浮层 | 已落地 |
 | `ui/schedule_form.py` | `QDialog`、`QLineEdit`、`QTextEdit` | 第 4 节表单态，新增与修改共用 | 已落地 |
 
@@ -219,7 +223,7 @@ PR #5 审查（zch，2026-10-14）提出三条意见，处理如下。
 | 包目录体积 | **646.7 MB** | T-01 不能整包入库的定量依据 |
 | 周起始可设为周一 | 是（`setFirstDayOfWeek(Qt.Monday)` 后读回确为 `DayOfWeek.Monday`） | 3 节第四条约束 |
 | 闰年 | 2028-02 为 29 天，可选中 `2028-02-29` | **V-07 的闰年部分已被机器验证**，不用等到人工验收才发现日历少一天 |
-| 列表列数 | `QTableWidget` 三列建立正常 | 3 节 ③ |
+| 列表列数 | `QTableWidget` 四列（日期 / 时间 / 标题 / 备注）建立正常 | 3 节 ③ |
 | 日期框宽容性 | `QLineEdit` 原样接受 `2026/10/15` | 5.1 节"不用 `QDateEdit`"的选择有了实测支撑 |
 | `QDateEdit` 显示格式 | `yyyy-MM-dd` | 同上：它会按该格式先行强校验，所以不当日期框 |
 
@@ -303,8 +307,8 @@ P09 阶段守卫是一条一刀切的规则（`ui` 包不许 import 任何 GUI �
 | 端口 | 谁来实现 | 界面拿它干什么 |
 | --- | --- | --- |
 | `ScheduleLike` | 领域层的 `Schedule` 只要具备 `id / title / date / time / notes` 五个属性即可 | `presenters` 把它转成列表行，不需要 import 领域类 |
-| `ScheduleServicePort` | 由 zch 的 `application/service.py` 落地；在此之前用 `ui_fakes.FakeScheduleService` | 四个用例：`list / create / update / delete` |
-| `MainViewPort` | 由 P10 的窗口代码适配 | 九个单向输出 + 两个提问（`ask_delete_confirm`、`open_schedule_form`） |
+| `ScheduleServicePort` | 由 zch 的 `application/service.py` 落地；在此之前用 `ui_fakes.FakeScheduleService` | 五个用例：`list / search / create / update / delete` |
+| `MainViewPort` | 由 P10 的窗口代码适配 | 十一个单向输出 + 两个提问（`ask_delete_confirm`、`open_schedule_form`） |
 
 全部用 `typing.Protocol` 的**结构性类型**：真实现换进来时 controller 不用改一行，`mypy` 负责证明它对得上（`mypy src tests` 当前全绿，说明替身与协议是严格匹配的，不是"跑得通就算"）。
 
@@ -407,7 +411,7 @@ delete_schedule(schedule_id: str) -> None
 | `MainViewPort` | P10 的 `ui/app.py` 适配的 `QMainWindow` | `CliMainView`（输出打 stdout，提问用 `input()`）、WebUI 的 HTTP handler、乃至测试里的 `FakeMainView` |
 | `ScheduleServicePort` | zch 的 `application/service.py` | 任何满足同样六个方法的服务；换存储不影响这一层 |
 
-`MainViewPort` 的十一个方法（九个单向输出 + `ask_delete_confirm` / `open_schedule_form` 两个提问）就是**前端必须兑现的全部契约**。新前端只要兑现这十一个方法，就能接上现成的 `ScheduleController`。
+`MainViewPort` 的十三个方法（十一个单向输出 + `ask_delete_confirm` / `open_schedule_form` 两个提问）就是**前端必须兑现的全部契约**。新前端只要兑现这十三个方法，就能接上现成的 `ScheduleController`。
 
 ### 11.3 将来换一个前端，动什么不动什么
 

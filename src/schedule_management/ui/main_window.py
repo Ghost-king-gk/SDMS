@@ -16,10 +16,11 @@ from __future__ import annotations
 
 import datetime as dt
 from collections.abc import Sequence
+from html import escape
 from typing import Final
 
-from PySide6.QtCore import QSettings, Qt
-from PySide6.QtGui import QAction, QColor, QPalette
+from PySide6.QtCore import QSettings, Qt, QTimer
+from PySide6.QtGui import QAction, QColor, QKeySequence, QPalette, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -27,8 +28,12 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMessageBox,
+    QPushButton,
     QSplitter,
     QStatusBar,
     QTableWidget,
@@ -45,17 +50,24 @@ from .ports import ScheduleServicePort, TodayProvider
 from .schedule_form import open_schedule_form
 from .view_models import FormRequest, ScheduleDraft, ScheduleRow
 
-_COLUMN_HEADERS: Final = ("时间", "标题", "备注")
+_COLUMN_HEADERS: Final = ("日期", "时间", "标题", "备注")
 _ID_ROLE: Final = Qt.ItemDataRole.UserRole
+_UPCOMING_DAY_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 1
 _EMPTY_HINT: Final = "这一天还没有日程。双击日历日期，或点「新增」记一条。"
 _WINDOW_TITLE: Final = "日程管理系统"
 _BRAND: Final = "日程管理"
 _DARK_SETTING: Final = "ui/dark"
+_SECTION_UPCOMING: Final = "接下来 7 天"
+_SEARCH_PLACEHOLDER: Final = "搜索标题或备注…"
 
 _ROW_HEIGHT: Final = 36
 _HEADER_HEIGHT: Final = 38
 _CARD_MARGIN: Final = 16
 _OUTER_MARGIN: Final = 18
+_SEARCH_DEBOUNCE_MS: Final = 250
+_SEARCH_INPUT_WIDTH: Final = 210
+_UPCOMING_MIN_HEIGHT: Final = 140
+_UPCOMING_MAX_HEIGHT: Final = 210
 
 _BUTTONS: Final = (
     ("create", "新增", "新增一条日程"),
@@ -67,6 +79,8 @@ _BUTTONS: Final = (
 )
 
 _TITLE_COLUMN_WIDTH: Final = 240
+_DATE_COLUMN_WIDTH: Final = 105
+_TIME_COLUMN_WIDTH: Final = 90
 
 
 def _application_palette(colors: theme.Palette) -> QPalette:
@@ -131,11 +145,31 @@ class MainWindow(QMainWindow):
         self._calendar.setMinimumWidth(320)
 
         self._count_text = ""
+        self._search_summary: tuple[str, int] | None = None
         self._day_label = QLabel("", self)
         self._day_label.setObjectName("DayHeading")
         self._table = QTableWidget(0, len(_COLUMN_HEADERS), self)
         self._status_label = QLabel("就绪", self)
         self._selection_label = QLabel(presenters.selection_text(None), self)
+
+        self._search_input = QLineEdit(self)
+        self._search_input.setObjectName("SearchInput")
+        self._search_input.setPlaceholderText(_SEARCH_PLACEHOLDER)
+        self._search_input.setFixedWidth(_SEARCH_INPUT_WIDTH)
+        self._search_input.setToolTip("按标题或备注搜索全部日程（Ctrl+F）")
+        self._clear_search_button = QPushButton("清空", self)
+        self._clear_search_button.setObjectName("ClearSearch")
+        self._clear_search_button.setToolTip("清空搜索并回到当前日期")
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(_SEARCH_DEBOUNCE_MS)
+
+        self._upcoming_list = QListWidget(self)
+        self._upcoming_list.setObjectName("UpcomingList")
+        self._upcoming_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._upcoming_list.setMinimumHeight(_UPCOMING_MIN_HEIGHT)
+        self._upcoming_list.setMaximumHeight(_UPCOMING_MAX_HEIGHT)
+        self._upcoming_list.setToolTip("点击条目跳到对应日期并选中该日程")
 
         self._build_layout()
         self._build_toolbar()
@@ -158,14 +192,24 @@ class MainWindow(QMainWindow):
         calendar_card.setObjectName("Card")
         calendar_layout = QVBoxLayout(calendar_card)
         calendar_layout.setContentsMargins(_CARD_MARGIN, _CARD_MARGIN, _CARD_MARGIN, _CARD_MARGIN)
-        calendar_layout.addWidget(self._calendar)
+        calendar_layout.setSpacing(10)
+        calendar_layout.addWidget(self._calendar, 1)
+        upcoming_title = QLabel(_SECTION_UPCOMING, calendar_card)
+        upcoming_title.setObjectName("SectionTitle")
+        calendar_layout.addWidget(upcoming_title)
+        calendar_layout.addWidget(self._upcoming_list)
 
         right_card = QFrame(self)
         right_card.setObjectName("Card")
         right_layout = QVBoxLayout(right_card)
         right_layout.setContentsMargins(_CARD_MARGIN, _CARD_MARGIN, _CARD_MARGIN, _CARD_MARGIN)
         right_layout.setSpacing(10)
-        right_layout.addWidget(self._day_label)
+        title_row = QHBoxLayout()
+        title_row.setSpacing(8)
+        title_row.addWidget(self._day_label, 1)
+        title_row.addWidget(self._search_input)
+        title_row.addWidget(self._clear_search_button)
+        right_layout.addLayout(title_row)
         right_layout.addWidget(self._table, 1)
 
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
@@ -190,7 +234,7 @@ class MainWindow(QMainWindow):
         status.setSizeGripEnabled(False)
 
     def _configure_table(self) -> None:
-        """表格的呈现细节：无网格、隔行底色、固定行高、三列各自的伸缩方式。"""
+        """表格的呈现细节：无网格、隔行底色、固定行高、四列各自的伸缩方式。"""
         self._table.setHorizontalHeaderLabels(list(_COLUMN_HEADERS))
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -204,11 +248,14 @@ class MainWindow(QMainWindow):
         header = self._table.horizontalHeader()
         header.setFixedHeight(_HEADER_HEIGHT)
         header.setStretchLastSection(False)
-        # 日期列下一分支再加；现在只有 时间 / 标题 / 备注 三列。
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        # 日期与时间用固定宽度，标题给足阅读空间，备注吃掉剩余宽度。
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        self._table.setColumnWidth(1, _TITLE_COLUMN_WIDTH)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self._table.setColumnWidth(0, _DATE_COLUMN_WIDTH)
+        self._table.setColumnWidth(1, _TIME_COLUMN_WIDTH)
+        self._table.setColumnWidth(2, _TITLE_COLUMN_WIDTH)
 
     def _build_toolbar(self) -> None:
         toolbar = QToolBar("主操作", self)
@@ -251,6 +298,13 @@ class MainWindow(QMainWindow):
         self._calendar.day_picked.connect(self._on_day_picked)
         self._calendar.day_activated.connect(self._on_day_activated)
         self._calendar.month_changed.connect(self._on_month_changed)
+        self._search_input.textChanged.connect(self._on_search_text_changed)
+        self._search_input.returnPressed.connect(self._trigger_search)
+        self._clear_search_button.clicked.connect(self._on_clear_search_clicked)
+        self._search_timer.timeout.connect(self._trigger_search)
+        self._upcoming_list.itemClicked.connect(self._on_upcoming_clicked)
+        self._search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
+        self._search_shortcut.activated.connect(self._focus_search)
 
     # --------------------------------------------------- MainViewPort 实现
 
@@ -259,23 +313,35 @@ class MainWindow(QMainWindow):
         self._table.blockSignals(True)
         try:
             self._table.setRowCount(0)
+            self._table.clearSpans()
             if not rows:
                 self._show_empty_hint()
-                return
-            for row in rows:
-                index = self._table.rowCount()
-                self._table.insertRow(index)
-                for column, text in enumerate((row.time_text, row.title_text, row.notes_text)):
-                    item = QTableWidgetItem(text)
-                    item.setData(_ID_ROLE, row.schedule_id)
-                    self._table.setItem(index, column, item)
-            self._restore_selection(self._controller.selected_id)
+            else:
+                for row in rows:
+                    index = self._table.rowCount()
+                    self._table.insertRow(index)
+                    values = (
+                        row.date.isoformat() if row.date is not None else "—",
+                        row.time_text,
+                        row.title_text,
+                        row.notes_text,
+                    )
+                    for column, text in enumerate(values):
+                        item = QTableWidgetItem(text)
+                        item.setData(_ID_ROLE, row.schedule_id)
+                        self._table.setItem(index, column, item)
+                self._restore_selection(self._controller.selected_id)
         finally:
             self._table.blockSignals(False)
+        # 摘要刷新放在列表重绘之后，且不在 controller.refresh 里调用：
+        # 保存、删除、切日期、搜索都会走到这里，一处接线覆盖全部路径，
+        # 同时 controller 单测的服务调用次数保持不变。
+        QTimer.singleShot(0, self._refresh_upcoming)
 
     def show_count(self, text: str) -> None:
         """日期标题与条数：标题用大字号，条数退成弱化的正文，避免一行全是重音。"""
         self._count_text = text
+        self._search_summary = None
         day = self._controller.current_day
         if day is None:
             self._day_label.setText(text)
@@ -286,6 +352,37 @@ class MainWindow(QMainWindow):
             f'<span style="font-size: 13px; font-weight: normal; color: {muted};">'
             f"　{text}</span>"
         )
+
+    def show_search_state(self, text: str, total: int) -> None:
+        """搜索态标题：明确写出关键词与命中数，不再显示某个具体日期。"""
+        self._search_summary = (text, total)
+        self._day_label.setText(presenters.search_heading(escape(text), total))
+
+    def clear_search(self) -> None:
+        """清空搜索框；屏蔽信号，避免 `clear()` 又触发一次搜索。"""
+        self._search_timer.stop()
+        self._search_summary = None
+        self._search_input.blockSignals(True)
+        try:
+            self._search_input.clear()
+        finally:
+            self._search_input.blockSignals(False)
+
+    def show_upcoming(self, rows: Sequence[ScheduleRow]) -> None:
+        """未来 7 天摘要：空列表放一个不可选中的占位项，不留空白。"""
+        self._upcoming_list.clear()
+        if not rows:
+            placeholder = QListWidgetItem(presenters.upcoming_empty_text())
+            placeholder.setFlags(Qt.ItemFlag.NoItemFlags)
+            self._upcoming_list.addItem(placeholder)
+            return
+
+        for row in rows:
+            item = QListWidgetItem(presenters.upcoming_item_text(row))
+            item.setData(_ID_ROLE, row.schedule_id)
+            item.setData(_UPCOMING_DAY_ROLE, row.date)
+            item.setToolTip(row.notes_text or "（无备注）")
+            self._upcoming_list.addItem(item)
 
     def show_selection(self, text: str) -> None:
         self._selection_label.setText(text)
@@ -306,11 +403,7 @@ class MainWindow(QMainWindow):
 
     def show_detail(self, row: ScheduleRow) -> None:
         """详情用列表已有的数据展示，不再查一次服务（controller 已经解释了为什么）。"""
-        QMessageBox.information(
-            self,
-            "日程详情",
-            f"时间：{row.time_text}\n标题：{row.title_text}\n备注：{row.notes_text or '（空）'}",
-        )
+        QMessageBox.information(self, "日程详情", presenters.detail_text(row))
 
     def ask_delete_confirm(self, row: ScheduleRow) -> bool:
         """删除确认。**调用它不等于已经删了**，只有返回 True 才会真的调 delete。"""
@@ -350,7 +443,9 @@ class MainWindow(QMainWindow):
         self._sync_dark_action()
         self._apply_theme()
         self._calendar.set_dark(dark)
-        if self._count_text:
+        if self._search_summary is not None:
+            self.show_search_state(*self._search_summary)
+        elif self._count_text:
             self.show_count(self._count_text)
         self._settings.setValue(_DARK_SETTING, dark)
 
@@ -373,6 +468,47 @@ class MainWindow(QMainWindow):
 
     def _on_row_selected(self) -> None:
         self._controller.select_row(self._selected_row_id())
+
+    def _on_search_text_changed(self, text: str) -> None:
+        """输入时不立即查服务：250ms 防抖，只有停下来才触发一次搜索。
+
+        清空输入框是一个明确的“退出搜索”动作，立即执行；继续等防抖会让
+        用户以为清空没生效。
+        """
+        if text.strip():
+            self._search_timer.start()
+            return
+        self._search_timer.stop()
+        self._trigger_search()
+
+    def _trigger_search(self) -> None:
+        """把搜索框内容交给 controller；窗口本身永远不直接调用服务。"""
+        self._search_timer.stop()
+        if hasattr(self, "_controller"):
+            self._controller.set_search(self._search_input.text())
+
+    def _on_clear_search_clicked(self) -> None:
+        """清空按钮：明确退出搜索，回到当前日期列表。"""
+        self._search_timer.stop()
+        if hasattr(self, "_controller"):
+            self._controller.set_search("")
+
+    def _focus_search(self) -> None:
+        self._search_input.setFocus()
+        self._search_input.selectAll()
+
+    def _refresh_upcoming(self) -> None:
+        """列表重绘后刷新未来 7 天摘要；controller 尚未建好时静默跳过。"""
+        if hasattr(self, "_controller"):
+            self._controller.load_upcoming()
+
+    def _on_upcoming_clicked(self, item: QListWidgetItem) -> None:
+        """点击摘要条目：跳到那一天并选中对应行，不直接打开表单。"""
+        day = item.data(_UPCOMING_DAY_ROLE)
+        schedule_id = item.data(_ID_ROLE)
+        if day is None or schedule_id is None:
+            return
+        self._controller.select_upcoming(day, str(schedule_id))
 
     def _on_day_picked(self, day: dt.date) -> None:
         self._controller.select_day(day)
@@ -401,9 +537,16 @@ class MainWindow(QMainWindow):
         return None if value is None else str(value)
 
     def _show_empty_hint(self) -> None:
-        """空状态不能是一片空白：一片空白会被当成程序坏了（第 4 节空状态）。"""
+        """空状态不能是一片空白：一片空白会被当成程序坏了（第 4 节空状态）。
+
+        搜索无命中与“这一天没有日程”是两种不同的空：前者要提示换关键词，
+        后者要提示怎么新增。同一条文案会让人以为搜索把日期切走了。
+        """
+        hint_text = _EMPTY_HINT
+        if hasattr(self, "_controller") and self._controller.search_text:
+            hint_text = presenters.search_empty_text(self._controller.search_text)
         self._table.insertRow(0)
-        hint = QTableWidgetItem(_EMPTY_HINT)
+        hint = QTableWidgetItem(hint_text)
         hint.setFlags(Qt.ItemFlag.NoItemFlags)
         hint.setForeground(Qt.GlobalColor.gray)
         self._table.setItem(0, 0, hint)

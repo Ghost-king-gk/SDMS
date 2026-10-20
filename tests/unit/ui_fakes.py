@@ -97,14 +97,18 @@ class FakeScheduleService:
         create_error: Exception | None = None,
         update_error: Exception | None = None,
         delete_error: Exception | None = None,
+        search_error: Exception | None = None,
+        fail_list_on: dt.date | None = None,
     ) -> None:
         self._items: list[StubSchedule] = list(items)
+        self._fail_list_on = fail_list_on
         self._errors = {
             "list": list_error,
             "count": count_error,
             "create": create_error,
             "update": update_error,
             "delete": delete_error,
+            "search": search_error,
         }
         self.calls: list[tuple[object, ...]] = []
 
@@ -132,6 +136,8 @@ class FakeScheduleService:
         self.calls.append(("list", day))
         if self._errors["list"] is not None:
             raise self._errors["list"]
+        if day == self._fail_list_on:
+            raise StorageError(f"读取 {day} 的日程失败")
         return [item for item in self._items if item.date == day]
 
     def count_by_date(self, start: dt.date, end: dt.date) -> dict[dt.date, int]:
@@ -146,6 +152,8 @@ class FakeScheduleService:
 
     def search_schedules(self, text: str) -> list[StubSchedule]:
         self.calls.append(("search", text))
+        if self._errors["search"] is not None:
+            raise self._errors["search"]
         needle = text.strip().casefold()
         if not needle:
             return []
@@ -221,6 +229,9 @@ class FakeMainView:
         self.confirm_answer = confirm_answer
         self.rows: list[tuple[ScheduleRow, ...]] = []
         self.counts: list[str] = []
+        self.search_states: list[tuple[str, int]] = []
+        self.clear_search_calls = 0
+        self.upcoming: list[tuple[ScheduleRow, ...]] = []
         self.month_counts: list[dict[dt.date, int]] = []
         self.selections: list[str] = []
         self.statuses: list[str] = []
@@ -252,6 +263,15 @@ class FakeMainView:
 
     def show_count(self, text: str) -> None:
         self.counts.append(text)
+
+    def show_search_state(self, text: str, total: int) -> None:
+        self.search_states.append((text, total))
+
+    def clear_search(self) -> None:
+        self.clear_search_calls += 1
+
+    def show_upcoming(self, rows: Sequence[ScheduleRow]) -> None:
+        self.upcoming.append(tuple(rows))
 
     def show_month_counts(self, counts: dict[dt.date, int]) -> None:
         self.month_counts.append(dict(counts))

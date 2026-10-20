@@ -99,6 +99,7 @@ def to_row(item: ScheduleLike) -> ScheduleRow:
         title_text=item.title,
         notes_text=item.notes,
         all_day=item.time is None,
+        date=item.date,
     )
 
 
@@ -110,6 +111,53 @@ def to_rows(items: Sequence[ScheduleLike]) -> list[ScheduleRow]:
 def count_text(total: int) -> str:
     """条数文案，例如 `共 3 条`。零条也照实说，不留空白让人以为程序坏了。"""
     return f"共 {total} 条"
+
+
+def search_heading(text: str, total: int) -> str:
+    """搜索结果标题：说明“这是搜索，不是在看待办日期”。
+
+    搜索结果可以横跨多天，如果仍然显示某个日期，用户会误以为列表只属于那天。
+    标题必须同时给出关键词与条数，零条也要说清，不能让人以为搜索没生效。
+    """
+    return f"搜索“{text}” · 共 {total} 条"
+
+
+def search_status_text(total: int) -> str:
+    """搜索完成后的状态栏文案。"""
+    return f"搜索到 {total} 条"
+
+
+def search_empty_text(text: str) -> str:
+    """搜索无命中时的列表空状态：说明“没搜到”，而不是“这天没有日程”。"""
+    return f"没有找到匹配「{text}」的日程，换个关键词试试。"
+
+
+def upcoming_item_text(row: ScheduleRow) -> str:
+    """“未来 7 天”列表的一行，例如 `10-20 周二 · 全天 · 整理课程笔记`。
+
+    日期用 `MM-DD` 而不是完整年份：摘要只覆盖 7 天，年份是噪声；但星期必须带，
+    用户判断“明天还是下周一”靠的是它。日期缺失时显示破折号，不静默省略字段。
+    """
+    day_text = "—"
+    if row.date is not None:
+        day_text = f"{row.date:%m-%d} {_WEEKDAY_NAMES[row.date.weekday()]}"
+    return f"{day_text} · {row.time_text} · {row.title_text}"
+
+
+def upcoming_empty_text() -> str:
+    """未来 7 天没有任何日程时的占位文案。"""
+    return "未来 7 天没有日程"
+
+
+def detail_text(row: ScheduleRow) -> str:
+    """详情对话框正文；日期缺失时显示破折号而不是整行消失。"""
+    day_text = row.date.isoformat() if row.date is not None else "—"
+    return (
+        f"日期：{day_text}\n"
+        f"时间：{row.time_text}\n"
+        f"标题：{row.title_text}\n"
+        f"备注：{row.notes_text or '（空）'}"
+    )
 
 
 def selection_text(row: ScheduleRow | None) -> str:

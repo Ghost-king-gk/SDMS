@@ -53,6 +53,7 @@ class ScheduleController:
         self._current_day: dt.date | None = None
         self._selected_id: str | None = None
         self._rows: list[ScheduleRow] = []
+        self._search_text = ""
 
     # ---------------------------------------------------------------- 只读状态
 
@@ -71,6 +72,11 @@ class ScheduleController:
         """列表区当前展示的行（只读快照）。"""
         return tuple(self._rows)
 
+    @property
+    def search_text(self) -> str:
+        """当前搜索词；空串表示正在看某一天的列表。"""
+        return self._search_text
+
     # ---------------------------------------------------------------- 日历与列表
 
     def start(self) -> None:
@@ -78,18 +84,31 @@ class ScheduleController:
         self.select_day(self._clock())
 
     def select_day(self, day: dt.date) -> None:
-        """切换筛选日期：清空选中项并重查列表（5.4 节的第二条）。"""
+        """切换筛选日期：清空搜索与选中项，重查该日列表（5.4 节的第二条）。
+
+        搜索结果横跨多天，切日期时必须显式退出搜索态；否则会出现“点了 16 号
+        却仍然看到全库结果”的错位。清空搜索框用 `clear_search`，窗口负责
+        屏蔽信号，避免清空动作又触发一次搜索。
+        """
         self._current_day = day
         self._selected_id = None
+        self._search_text = ""
+        self._view.clear_search()
         self.refresh()
 
     def refresh(self) -> bool:
-        """重查当前筛选日期并整体重绘列表。
+        """重查当前列表并整体重绘。
+
+        处于搜索态时重查的是搜索词而不是当天列表：保存、删除、手动刷新之后
+        都应停在用户当前的搜索视图里，不能悄悄跳回某一天。
 
         查询失败不向上抛：服务抛什么都翻译成提示，界面保留上一次的样子，
-        不做"假装成功"的事。返回值告诉调用方这次到底成没成：成功 `True`，
+        不做“假装成功”的事。返回值告诉调用方这次到底成没成：成功 `True`，
         查询失败或尚未 `start()`（没有筛选日期）都是 `False`。
         """
+        if self._search_text:
+            return self._run_search(self._search_text)
+
         day = self._current_day
         if day is None:
             return False
@@ -110,6 +129,72 @@ class ScheduleController:
         # 列表仍然是成功的，不该被一条辅助查询拖成失败。
         self.load_month_counts(day.year, day.month)
         return True
+
+    def set_search(self, text: str) -> bool:
+        """按标题/备注搜索全部日程；空查询等价于退出搜索、回到当天列表。
+
+        搜索词只在这里抵达服务，窗口的输入框**不得直接查服务**：防抖、
+        回车与清空三种入口都汇到本方法，查询次数与错误处理才只有一份。
+
+        查询失败时保留旧列表与旧搜索态，只弹错误提示。搜索失败不能把界面
+        清成空列表——那会让用户以为“没有结果”，而不是“这次没查成”。
+        """
+        needle = text.strip()
+        if not needle:
+            self._search_text = ""
+            self._view.clear_search()
+            return self.refresh()
+        return self._run_search(needle)
+
+    def _run_search(self, needle: str) -> bool:
+        """执行一次搜索并更新列表；成功后才提交 `_search_text`。"""
+        try:
+            rows = presenters.to_rows(self._service.search_schedules(needle))
+        except Exception as exc:
+            headline, message = self._describe(exc, "搜索日程")
+            self._view.show_error(headline, message)
+            return False
+
+        self._search_text = needle
+        self._rows = rows
+        self._view.show_rows(rows)
+        self._view.show_search_state(needle, len(rows))
+        self._sync_selection()
+        self._view.show_status(presenters.search_status_text(len(rows)))
+        return True
+
+    def load_upcoming(self) -> bool:
+        """汇总从今天起 7 天（含今天）的日程，交给左侧摘要列表。
+
+        起点来自注入的 `clock`，测试可以固定“今天”。逐日调用
+        `list_schedules`，按天拼接即可——服务已保证同一天内全天在前、
+        再按时间排序，跨天顺序由循环顺序决定。
+
+        任何一天查询失败都只记日志、返回 `False`，**不弹框**：摘要是浏览
+        辅助信息，不该用错误对话框打断正在进行的操作。失败时不调用
+        `show_upcoming`，界面上保留上一次成功的摘要。
+        """
+        start = self._clock()
+        rows: list[ScheduleRow] = []
+        try:
+            for offset in range(7):
+                day = start + dt.timedelta(days=offset)
+                rows.extend(presenters.to_rows(self._service.list_schedules(day)))
+        except Exception as exc:
+            _LOGGER.warning("加载未来 7 天摘要失败：%s", exc)
+            return False
+
+        self._view.show_upcoming(rows)
+        return True
+
+    def select_upcoming(self, day: dt.date, schedule_id: str) -> None:
+        """点击未来 7 天摘要：先切到该日期，再选中对应行。
+
+        顺序不能反：`select_day` 会清空选中项，先 `select_row` 会被随后
+        的刷新清掉。若该条已经被删除，刷新后选中自然落空，这是正确结果。
+        """
+        self.select_day(day)
+        self.select_row(schedule_id)
 
     def load_month_counts(self, year: int, month: int) -> bool:
         """把这个月「哪天有几条」交给界面标记日历。
@@ -178,8 +263,10 @@ class ScheduleController:
     def request_edit(self) -> None:
         """点击「修改」：必须有选中项，否则一次服务都不调用。
 
-        预填的来源有两个：三个字段取自列表行，日期取当前筛选日期——
-        列表只显示三列（时间/标题/备注），日期隐含在筛选条件里。
+        预填的来源：三个字段取自列表行，日期优先取行上的 `date`——
+        搜索结果可以横跨多个日期，用当前筛选日期回填会把记录改到错误的一天。
+        只有旧构造的行（`date is None`，例如当天列表的测试替身）才退回
+        当前筛选日期；两者都没有时留空，交给后端判定。
 
         全天日程在表单里是空时间：`time_text` 的“全天”只是展示文案，
         原样回填会在保存时被服务层当成非法时间解析，因此必须还原成空串。
@@ -188,7 +275,7 @@ class ScheduleController:
         if row is None:
             return
 
-        day = self._current_day
+        day = row.date if row.date is not None else self._current_day
         initial = ScheduleDraft(
             title=row.title_text,
             date_text=presenters.format_date(day) if day is not None else "",

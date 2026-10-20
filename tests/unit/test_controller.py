@@ -37,17 +37,21 @@ ITEM_LATER = StubSchedule(
 )
 ITEM_TOMORROW = StubSchedule(id="id-3", title="体检", date=TOMORROW, time=dt.time(8, 0))
 ITEM_ALL_DAY = StubSchedule(id="id-4", title="休息", date=TODAY, time=None)
+ITEM_WEEK_END = StubSchedule(
+    id="id-5", title="整理课程笔记", date=dt.date(2026, 10, 21), time=None, notes="周报素材"
+)
 
 
 def build_controller(
     service: FakeScheduleService | None = None,
     view: FakeMainView | None = None,
     items: tuple[StubSchedule, ...] = (ITEM_TODAY, ITEM_LATER),
+    clock: dt.date = TODAY,
 ) -> tuple[ScheduleController, FakeScheduleService, FakeMainView]:
     """搭一套 controller + 替身。`clock` 固定为 2026-10-15，避免跨零点翻车。"""
     service = service if service is not None else FakeScheduleService(items)
     view = view if view is not None else FakeMainView()
-    controller = ScheduleController(service, view, clock=lambda: TODAY)
+    controller = ScheduleController(service, view, clock=lambda: clock)
     return controller, service, view
 
 
@@ -465,3 +469,227 @@ def test_storage_error_cause_is_logged_as_warning(caplog: pytest.LogCaptureFixtu
     warnings = [record for record in caplog.records if record.levelno == logging.WARNING]
     assert len(warnings) == 1
     assert "磁盘已满" in warnings[0].getMessage()
+
+
+# ------------------------------------------------------------------------- 搜索
+
+
+def test_search_returns_hits_from_multiple_days_with_their_dates() -> None:
+    """搜索必须跨日期；每行都带自己的日期，修改时才有可靠的回填来源。"""
+    controller, service, view = build_controller(
+        items=(ITEM_TODAY, ITEM_LATER, ITEM_TOMORROW, ITEM_WEEK_END)
+    )
+    controller.start()
+
+    assert controller.set_search("周报") is True
+
+    assert service.calls_of("search") == [("search", "周报")]
+    assert [row.schedule_id for row in view.last_rows] == ["id-1", "id-5"]
+    assert [row.date for row in view.last_rows] == [TODAY, dt.date(2026, 10, 21)]
+    assert view.search_states == [("周报", 2)]
+    assert view.last_status == "搜索到 2 条"
+    assert service.calls_of("list") == [("list", TODAY)], "搜索不得再按天查一遍"
+
+
+def test_search_trims_keyword_before_calling_service() -> None:
+    controller, service, _view = build_controller()
+
+    controller.start()
+    controller.set_search("  周报  ")
+
+    assert service.calls_of("search") == [("search", "周报")]
+
+
+def test_empty_search_clears_state_and_restores_current_day() -> None:
+    controller, service, view = build_controller(items=(ITEM_TODAY, ITEM_LATER, ITEM_TOMORROW))
+    controller.start()
+    controller.set_search("周报")
+    clears_before = view.clear_search_calls
+
+    assert controller.set_search("   ") is True
+
+    assert controller.search_text == ""
+    assert view.clear_search_calls == clears_before + 1
+    assert [row.schedule_id for row in view.last_rows] == ["id-1", "id-2"]
+    assert view.last_status == "就绪：共 2 条"
+    assert service.calls_of("list")[-1] == ("list", TODAY)
+
+
+def test_search_without_hits_reports_zero_not_error() -> None:
+    controller, _service, view = build_controller(items=(ITEM_TODAY,))
+    controller.start()
+
+    assert controller.set_search("不存在") is True
+
+    assert view.last_rows == ()
+    assert view.search_states == [("不存在", 0)]
+    assert view.last_status == "搜索到 0 条"
+    assert view.errors == []
+
+
+def test_search_failure_keeps_old_rows_and_shows_error() -> None:
+    """搜索失败不能被当成“没有结果”：旧列表与旧搜索态都要保留。"""
+    service = FakeScheduleService((ITEM_TODAY,))
+    controller, service, view = build_controller(service)
+    controller.start()
+    good_rows = view.last_rows
+
+    service.fail_next("search", StorageError("索引文件损坏"))
+
+    assert controller.set_search("周报") is False
+
+    assert view.last_rows == good_rows, "失败时不能清空列表"
+    assert view.search_states == [], "失败时不能进入搜索态"
+    assert view.errors[-1][0] == "数据没能写入磁盘"
+    assert "索引文件损坏" in view.errors[-1][1]
+    assert controller.search_text == ""
+
+
+def test_refresh_while_searching_reruns_search_instead_of_day_list() -> None:
+    """保存/删除后的 refresh 要停在搜索视图，不能悄悄跳回某一天。"""
+    controller, service, view = build_controller(items=(ITEM_TODAY, ITEM_TOMORROW))
+    controller.start()
+    controller.set_search("周报")
+    list_calls = len(service.calls_of("list"))
+
+    assert controller.refresh() is True
+
+    assert service.calls_of("search") == [("search", "周报"), ("search", "周报")]
+    assert len(service.calls_of("list")) == list_calls, "刷新搜索不应重新按天查询"
+    assert [row.schedule_id for row in view.last_rows] == ["id-1"]
+
+
+def test_select_day_clears_search_and_shows_that_day() -> None:
+    controller, service, view = build_controller(items=(ITEM_TODAY, ITEM_TOMORROW))
+    controller.start()
+    controller.set_search("周报")
+    clears_before = view.clear_search_calls
+
+    controller.select_day(TOMORROW)
+
+    assert controller.search_text == ""
+    assert view.clear_search_calls == clears_before + 1
+    assert [row.schedule_id for row in view.last_rows] == ["id-3"]
+    assert service.calls_of("list")[-1] == ("list", TOMORROW)
+    assert view.last_status.startswith("就绪")
+
+
+def test_edit_from_search_uses_row_date_not_current_day() -> None:
+    """搜索结果可以跨日；编辑必须回填行上的日期，否则会把记录改到错误的一天。"""
+    controller, service, view = build_controller(
+        items=(ITEM_TODAY, ITEM_TOMORROW),
+        view=FakeMainView(form_results=(a_draft(title="体检（改）", date_text="2026-10-16"),)),
+    )
+    controller.start()
+    controller.set_search("体检")
+    assert [row.schedule_id for row in view.last_rows] == ["id-3"]
+    controller.select_row("id-3")
+
+    controller.request_edit()
+
+    first = view.form_requests[0]
+    assert first.initial is not None
+    assert first.initial.date_text == "2026-10-16", "不能用当前筛选日期 2026-10-15"
+    update_call = service.calls_of("update")[0]
+    assert update_call[1] == "id-3"
+    assert update_call[3] == "2026-10-16"
+    assert service.calls_of("search")[-1] == ("search", "体检"), "保存后重查搜索，而不是当天"
+
+
+# --------------------------------------------------------------------- 未来 7 天
+
+
+def _list_days(service: FakeScheduleService) -> list[dt.date]:
+    days: list[dt.date] = []
+    for call in service.calls_of("list"):
+        day = call[1]
+        assert isinstance(day, dt.date)
+        days.append(day)
+    return days
+
+
+def test_load_upcoming_covers_today_through_six_days_later() -> None:
+    controller, service, view = build_controller(
+        items=(ITEM_TODAY, ITEM_LATER, ITEM_TOMORROW, ITEM_WEEK_END)
+    )
+    controller.start()
+    calls_before = len(service.calls_of("list"))
+
+    assert controller.load_upcoming() is True
+
+    expected_days = [TODAY + dt.timedelta(days=offset) for offset in range(7)]
+    assert _list_days(service)[calls_before:] == expected_days
+    assert [row.schedule_id for row in view.upcoming[-1]] == [
+        "id-1",
+        "id-2",
+        "id-3",
+        "id-5",
+    ]
+    assert [row.date for row in view.upcoming[-1]] == [
+        TODAY,
+        TODAY,
+        TOMORROW,
+        dt.date(2026, 10, 21),
+    ], "摘要行必须带日期，点击时才知道跳哪一天"
+
+
+def test_refresh_does_not_trigger_upcoming_by_itself() -> None:
+    """controller.refresh 不负责摘要；窗口用 QTimer 调度，单测调用次数才稳定。"""
+    controller, _service, view = build_controller()
+    controller.start()
+
+    controller.refresh()
+
+    assert view.upcoming == [], "controller 单测里不应出现自动加载的摘要"
+
+
+def test_load_upcoming_spans_month_boundary() -> None:
+    month_end = dt.date(2026, 10, 29)
+    service = FakeScheduleService(
+        (
+            StubSchedule(id="a", title="月末总结", date=month_end, time=dt.time(18, 0)),
+            StubSchedule(id="b", title="十一月计划", date=dt.date(2026, 11, 1), time=None),
+            StubSchedule(id="c", title="七天之外", date=dt.date(2026, 11, 5), time=None),
+        )
+    )
+    controller, service, view = build_controller(service, clock=month_end)
+
+    assert controller.load_upcoming() is True
+
+    assert _list_days(service) == [month_end + dt.timedelta(days=offset) for offset in range(7)]
+    assert _list_days(service)[-1] == dt.date(2026, 11, 4), "闭区间最后一天是今天 +6"
+    assert [row.schedule_id for row in view.upcoming[-1]] == ["a", "b"]
+
+
+def test_load_upcoming_failure_midway_returns_false_without_dialog(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    service = FakeScheduleService((ITEM_TODAY,), fail_list_on=TOMORROW)
+    controller, _service, view = build_controller(service)
+
+    with caplog.at_level(logging.WARNING, logger="schedule_management.ui.controller"):
+        assert controller.load_upcoming() is False
+
+    assert view.upcoming == [], "失败时保留上一次摘要，不能推一份不完整的结果"
+    assert view.errors == [], "摘要失败不弹框"
+    assert any("读取 2026-10-16 的日程失败" in record.getMessage() for record in caplog.records)
+
+
+def test_load_upcoming_empty_week_reports_empty_sequence() -> None:
+    controller, _service, view = build_controller(items=())
+
+    assert controller.load_upcoming() is True
+
+    assert view.upcoming[-1] == ()
+
+
+def test_select_upcoming_jumps_to_day_and_selects_row() -> None:
+    controller, _service, view = build_controller(items=(ITEM_TODAY, ITEM_TOMORROW))
+    controller.start()
+    controller.set_search("周报")
+    controller.select_upcoming(TOMORROW, "id-3")
+
+    assert controller.current_day == TOMORROW
+    assert controller.selected_id == "id-3"
+    assert controller.search_text == "", "从摘要跳转必须先退出搜索态"
+    assert [row.schedule_id for row in view.last_rows] == ["id-3"]
