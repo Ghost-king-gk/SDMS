@@ -51,6 +51,19 @@ class MainViewPort(Protocol):
     def show_count(self, text: str) -> None:
         """显示条数文案（② 区）。"""
 
+    def show_search_state(self, text: str, total: int) -> None:
+        """进入搜索态：② 区改成搜索标题，并显示命中条数。
+
+        搜索结果可能横跨多个日期，普通日期标题会误导；窗口应把 `DayHeading`
+        设为 `搜索“...” · 共 N 条`。
+        """
+
+    def clear_search(self) -> None:
+        """退出搜索态：清空搜索框（不得再次触发搜索）并恢复普通日期标题。"""
+
+    def show_upcoming(self, rows: Sequence[ScheduleRow]) -> None:
+        """显示未来 7 天摘要（含今天），按日期与时间顺序；空序列显示占位文案。"""
+
     def show_month_counts(self, counts: dict[dt.date, int]) -> None:
         """用「当月每个有日程的日期 → 条数」标记日历（① 区）。
 

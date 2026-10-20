@@ -349,6 +349,67 @@ QLineEdit:focus, QTextEdit:focus {
     border-color: $primary;
 }
 
+/* ------------------------------------------------------ 搜索与 7 天摘要 */
+QLineEdit#SearchInput {
+    background-color: $surface_alt;
+    color: $text;
+    border: 1px solid $border;
+    border-radius: 8px;
+    padding: 5px 10px;
+    selection-background-color: $primary;
+    selection-color: $on_primary;
+}
+
+QLineEdit#SearchInput:focus {
+    background-color: $surface;
+    border-color: $primary;
+}
+
+QPushButton#ClearSearch {
+    background-color: $surface;
+    color: $muted;
+    border: 1px solid $border;
+    border-radius: 8px;
+    padding: 5px 14px;
+    font-weight: normal;
+}
+
+QPushButton#ClearSearch:hover {
+    background-color: $hover;
+    color: $primary;
+    border-color: $primary;
+}
+
+QLabel#SectionTitle {
+    color: $muted;
+    font-size: 12px;
+    font-weight: bold;
+    padding: 2px 2px 0 2px;
+}
+
+QListWidget#UpcomingList {
+    background-color: $surface_alt;
+    color: $text;
+    border: 1px solid $border;
+    border-radius: 8px;
+    padding: 4px;
+    outline: none;
+}
+
+QListWidget#UpcomingList::item {
+    padding: 5px 6px;
+    border-radius: 6px;
+}
+
+QListWidget#UpcomingList::item:hover {
+    background-color: $hover;
+}
+
+QListWidget#UpcomingList::item:selected {
+    background-color: $event_background;
+    color: $text;
+}
+
 /* ---------------------------------------------------------------- 状态栏 */
 QStatusBar {
     background-color: $surface;

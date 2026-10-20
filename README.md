@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](https://www.python.org/)
 [![PySide6](https://img.shields.io/badge/PySide6-6.12-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)]()
-[![Tests](https://img.shields.io/badge/Tests-325%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-357%20passed-brightgreen.svg)]()
 [![License](https://img.shields.io/badge/License-Course%20Project-lightgrey.svg)]()
 
 </div>
@@ -25,16 +25,17 @@
 - 🗓️ **日程管理**：新增、查看、修改、删除，按选中日期展示当天全部日程；
 - 🌤️ **全天日程**：时间留空即为全天，列表显示“全天”，并排在同日定时日程之前；
 - 📅 **日历筛选**：左侧月历选择日期，右侧列表实时刷新；
+- 🔎 **全局搜索**：顶部搜索框按标题或备注查找全部日程，结果带日期列、可跨日期查看与修改；`%`、`_` 等字符按字面量匹配，清空即回到当天；
+- 🗓️ **未来 7 天摘要**：右侧列表下方列出今天起 7 天的日程，点击条目跳到对应日期并选中该条；
 - 🟦 **日历日程标记**：有日程的日期显示底色与条数徽标（超过 9 条显示 `9+`），翻月自动刷新当月标记；
 - ⭐ **今天高亮**：今天在日历上以琥珀色标记，顶部显示「今天 · 日期」，随时可点「回到今天」；
 - 🌗 **深色模式**：工具栏一键切换浅色 / 深色主题，选择写入本地设置，重启后保持；
-- 🔎 **标题/备注搜索**：按关键词查找全部日程，`%`、`_` 等字符按字面量匹配；
 - 🖱️ **双击日历新增**：双击某个日期直接打开「新增日程」表单，日期自动预填；
 - ✍️ **宽容输入**：`2026/10/15`、`2026.10.15`、`2026年10月15日`、`9:05` 等写法由服务层统一解析；
 - 💾 **本地持久化**：SQLite 存储，重启程序后数据仍在；
 - 🛡️ **友好错误提示**：区分输入错误、记录不存在、重复 ID 与存储故障，不向用户泄露堆栈；
 - 🧱 **分层架构**：`ui → application → domain`，`infrastructure` 实现仓储契约，`composition.py` 负责装配；
-- ✅ **自动化测试**：325 条测试覆盖交互规则、解析、CRUD、契约、SQLite 集成与入口装配。
+- ✅ **自动化测试**：357 条测试覆盖交互规则、解析、CRUD、契约、SQLite 集成与入口装配。
 
 ## 🚀 快速开始
 
@@ -125,7 +126,7 @@ uv run python -m compileall src
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
-uv run pytest -q                  # 325 passed
+uv run pytest -q                  # 357 passed
 ```
 
 详细的环境配置、Windows/Linux 差异、测试明细与验证结果见 [`docs/development.md`](docs/development.md)。

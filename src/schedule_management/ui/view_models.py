@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 from dataclasses import dataclass
 from typing import Literal
 
@@ -27,6 +28,11 @@ class ScheduleRow:
     `all_day` 是展示文本之外的**语义标记**：全天日程的 `time_text` 是“全天”，
     这句话只能给人看，回填表单时必须还原成空时间，否则保存时会被服务层
     当成非法时间解析。它放在最后并带默认值，既有的四参数构造仍然可用。
+
+    `date` 是搜索与“未来 7 天”列表带来的新需求：搜索结果跨多个日期，
+    行如果只带格式化文本，修改时就没有可靠日期可回填。字段放在末尾且
+    默认为 `None`，当天列表的旧构造方式保持可用；`None` 表示“日期由
+    当前筛选条件隐含”，界面显示为破折号。
     """
 
     schedule_id: str
@@ -34,6 +40,7 @@ class ScheduleRow:
     title_text: str
     notes_text: str
     all_day: bool = False
+    date: dt.date | None = None
 
 
 @dataclass(frozen=True)

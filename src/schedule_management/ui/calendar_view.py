@@ -96,7 +96,7 @@ class _CountCalendar(QCalendarWidget):
             if total is None:
                 return
 
-            side = min(18, max(12, min(rect.width(), rect.height()) - 12))
+            side = min(16, max(12, min(rect.width(), rect.height()) - 12))
             badge = QRect(rect.right() - side - 2, rect.top() + 2, side, side)
             # 徽标自带一圈与文字同色的描边：今天被选中时格子也是蓝底，
             # 纯蓝圆点会整块“消失”，描边让它仍然看得出是个独立的徽标。
@@ -146,6 +146,9 @@ class CalendarPanel(QWidget):
         self._today = today
         self._counts: dict[dt.date, int] = {}
         self._dark = False
+
+        # 左卡片只放日历后仍有足够高度；360 是日期行不再被压扁的下限。
+        self.setMinimumHeight(360)
 
         self._calendar = _CountCalendar(self)
         self._calendar.setFirstDayOfWeek(Qt.DayOfWeek.Monday)

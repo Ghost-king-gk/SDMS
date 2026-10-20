@@ -75,6 +75,57 @@ def test_to_row_renders_all_day_row() -> None:
     assert (row.title_text, row.notes_text) == ("写周报", "给导师")
 
 
+def test_to_row_carries_the_schedule_date() -> None:
+    """搜索与摘要都跨日期：行必须自带日期，编辑时不能靠当前筛选条件猜。"""
+    row = presenters.to_row(a_schedule())
+
+    assert row.date == A_DAY
+
+
+def test_search_texts_state_keyword_and_total_honestly() -> None:
+    assert presenters.search_heading("周报", 3) == "搜索“周报” · 共 3 条"
+    assert presenters.search_heading("周报", 0) == "搜索“周报” · 共 0 条", "零条也要说清"
+    assert presenters.search_status_text(3) == "搜索到 3 条"
+    assert "周报" in presenters.search_empty_text("周报")
+
+
+def test_upcoming_item_text_has_date_weekday_time_and_title() -> None:
+    row = ScheduleRow(
+        schedule_id="id-1",
+        time_text="全天",
+        title_text="整理课程笔记",
+        notes_text="",
+        date=dt.date(2026, 10, 20),
+    )
+    timed = ScheduleRow(
+        schedule_id="id-2",
+        time_text="09:30",
+        title_text="写周报",
+        notes_text="",
+        date=dt.date(2026, 10, 15),
+    )
+
+    assert presenters.upcoming_item_text(row) == "10-20 周二 · 全天 · 整理课程笔记"
+    assert presenters.upcoming_item_text(timed) == "10-15 周四 · 09:30 · 写周报"
+
+
+def test_upcoming_item_text_marks_missing_date_instead_of_omitting_it() -> None:
+    assert presenters.upcoming_item_text(A_ROW) == "— · 09:30 · 写周报"
+    assert presenters.upcoming_empty_text() == "未来 7 天没有日程"
+
+
+def test_detail_text_shows_date() -> None:
+    row = ScheduleRow(
+        schedule_id="id-1",
+        time_text="09:30",
+        title_text="写周报",
+        notes_text="",
+        date=A_DAY,
+    )
+
+    assert presenters.detail_text(row).splitlines()[0] == "日期：2026-10-15"
+
+
 def test_to_rows_preserves_service_order() -> None:
     later = a_schedule("id-9", "下班打车", at=dt.time(23, 59), notes="")
 
