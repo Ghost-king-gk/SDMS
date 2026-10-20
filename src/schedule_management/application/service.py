@@ -44,9 +44,24 @@ class ScheduleService(ScheduleUseCases):
     def list_schedules(self, day: dt.date) -> list[Schedule]:
         """返回 ``day`` 当天的全部日程；没有记录时返回空列表。
 
-        排序由仓储负责（``ORDER BY time, id``），服务层不再排一遍。
+        排序由仓储负责（全天在前，再按时间、id），服务层不再排一遍。
         """
         return self._repository.list_by_date(day)
+
+    def count_by_date(self, start: dt.date, end: dt.date) -> dict[dt.date, int]:
+        """返回 ``[start, end]`` 闭区间内每个有日程的日期及条数。
+
+        直接委托仓储查询；日历标记用键，当天条数徽标用值。区间内没有日程时
+        返回空字典。
+        """
+        return self._repository.count_by_date(start, end)
+
+    def search_schedules(self, text: str) -> list[Schedule]:
+        """按标题或备注包含 ``text`` 搜索；去空白后为空时返回空列表。"""
+        needle = text.strip()
+        if not needle:
+            return []
+        return self._repository.search_schedules(needle)
 
     def create_schedule(
         self,
@@ -55,7 +70,10 @@ class ScheduleService(ScheduleUseCases):
         time_text: str,
         notes: str,
     ) -> Schedule:
-        """新增一条日程并返回保存后的对象；id 由服务层生成。"""
+        """新增一条日程并返回保存后的对象；id 由服务层生成。
+
+        ``time_text`` 留空表示全天日程，保存为 ``Schedule.time=None``。
+        """
         clean_title, day, at, clean_notes = validate(title, date_text, time_text, notes)
         schedule = Schedule(
             id=new_schedule_id(),
@@ -75,7 +93,10 @@ class ScheduleService(ScheduleUseCases):
         time_text: str,
         notes: str,
     ) -> Schedule:
-        """全量更新一条日程，id 保持不变；记录不存在时抛 ``ScheduleNotFoundError``。"""
+        """全量更新一条日程，id 保持不变；记录不存在时抛 ``ScheduleNotFoundError``。
+
+        ``time_text`` 留空表示改为全天日程，保存为 ``Schedule.time=None``。
+        """
         clean_id = _require_schedule_id(schedule_id)
         clean_title, day, at, clean_notes = validate(title, date_text, time_text, notes)
         schedule = Schedule(

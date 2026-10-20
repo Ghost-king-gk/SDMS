@@ -25,16 +25,28 @@ composition.py（包根，唯一同时认识 application 与 infrastructure 的�
 此协议，不再维护第二份签名（见第 9 节）。
 
 ```python
+class ScheduleView(Protocol):
+    """界面可见的一条日程：五个只读属性；``time`` 为 ``None`` 表示全天。"""
+
+    id: str
+    title: str
+    date: dt.date
+    time: dt.time | None
+    notes: str
+
+
 @runtime_checkable
 class ScheduleUseCases(Protocol):
-    def list_schedules(self, day: dt.date) -> list[Schedule]: ...
+    def list_schedules(self, day: dt.date) -> Sequence[ScheduleView]: ...
     def create_schedule(
         self, title: str, date_text: str, time_text: str, notes: str
-    ) -> Schedule: ...
+    ) -> ScheduleView: ...
     def update_schedule(
         self, schedule_id: str, title: str, date_text: str, time_text: str, notes: str
-    ) -> Schedule: ...
+    ) -> ScheduleView: ...
     def delete_schedule(self, schedule_id: str) -> None: ...
+    def count_by_date(self, start: dt.date, end: dt.date) -> dict[dt.date, int]: ...
+    def search_schedules(self, text: str) -> Sequence[ScheduleView]: ...
 
 
 class ScheduleService(ScheduleUseCases):
@@ -43,9 +55,15 @@ class ScheduleService(ScheduleUseCases):
 
 - `create_schedule` / `update_schedule` 接收**用户原样输入的字符串**日期与时间，解析归服务层
   （这是相对早期草案的唯一偏差，已由界面负责人确认）。界面不预解析、不抢先校验。
-- `list_schedules` 接收 `dt.date`（来自日历点选），返回 `list[Schedule]`；无记录返回空列表。
+- `time_text` **留空表示全天日程**，服务层保存 `Schedule.time=None`；`date_text` 仍必填。
+- `list_schedules` 接收 `dt.date`（来自日历点选），返回 `Sequence[ScheduleView]`；无记录返回空列表。
+- `count_by_date(start, end)` 返回闭区间内每个有日程的日期及条数（`dict[date, int]`）：
+  日历底色用键，当天条数徽标用值；空区间或 `start > end` 返回空字典。
+- `search_schedules(text)` 按标题或备注包含搜索；`text` 去空白后为空返回空列表，
+  `%`、`_`、`\` 按字面量匹配；结果按日期、全天在前、时间、id 排序。
 - `update_schedule` 返回新对象但 **id 不变**；四个字段全量覆盖，不是增量补丁。
-- 返回值 `Schedule` 结构上满足界面 `ScheduleLike`（`id/title/date/time/notes` 五个只读属性）。
+- 返回值用 `ScheduleView` 协议（`id/title/date/time/notes` 五个只读属性，`time: dt.time | None`）；
+  领域 `Schedule` 结构上满足它，界面的 `ScheduleLike` 就是 `ScheduleView` 的别名，不是第二份定义。
 - `ScheduleUseCases` 是唯一权威协议名；UI 的 `ScheduleServicePort` 只是它的别名，不是第二份定义。
 - `composition.build_service(connection) -> ScheduleService` 是唯一装配点；连接归调用方所有。
 
@@ -71,6 +89,8 @@ class ScheduleRepository(Protocol):
     def add(self, schedule: Schedule) -> None: ...
     def get(self, schedule_id: str) -> Schedule | None: ...
     def list_by_date(self, day: dt.date) -> list[Schedule]: ...
+    def count_by_date(self, start: dt.date, end: dt.date) -> dict[dt.date, int]: ...
+    def search_schedules(self, text: str) -> list[Schedule]: ...
     def update(self, schedule: Schedule) -> bool: ...
     def delete(self, schedule_id: str) -> bool: ...
 ```
@@ -78,7 +98,14 @@ class ScheduleRepository(Protocol):
 - `update` / `delete` 返回 `True` 表示确实改到/删到一行，`False` 表示 **id 不存在**；
   服务层把 `False` 翻成 `ScheduleNotFoundError`，界面永远看不到裸 `bool`。
 - `add` 遇到重复 id 抛 `DuplicateScheduleError`；其余 `sqlite3.Error` 抛 `StorageError`。
-- `list_by_date` 在仓储内完成 `ORDER BY time, id` 升序；服务层与界面都不再排序。
+- `list_by_date` 在仓储内完成排序：**全天在前**，再按 `time`、`id` 升序；服务层与界面都不再排序。
+- `count_by_date(start, end)` 是**闭区间**（含 `start` 与 `end`），返回日期→条数，
+  同一日期多条记录合并计数；没有日程的日期不出现在字典里，空区间或 `start > end` 返回空字典。
+- `search_schedules(text)` 在 SQL 中用 `LIKE ... ESCAPE '\'` 匹配标题或备注，用户输入的
+  `%`、`_`、`\` 先转义再拼接，保证按字面量搜索；空查询返回空列表；排序见下条。
+- 搜索排序：`ORDER BY date, CASE WHEN time = '' THEN 0 ELSE 1 END, time, id`。
+- `Schedule.time` 可为 `None`（全天）。SQLite 的 `time` 列仍是 `TEXT NOT NULL`，用**空串**
+  作为全天哨兵，避免旧库重建或迁移；读出空串还原成 `None`，其他非法值仍转 `StorageError`。
 - 仓储不修改注入连接的 `row_factory`，也不关闭连接；事务按单次写操作 commit/rollback。
 
 ## 5. 宽容解析（T-02）
@@ -90,6 +117,7 @@ class ScheduleRepository(Protocol):
 | `2026-10-15` / `2026/10/15` / `2026.10.15` / `2026年10月15日` | `date(2026, 10, 15)` |
 | `2026-1-5` 等四种写法 | `date(2026, 1, 5)` |
 | `9:05` / `09:05` | `time(9, 5)` |
+| 时间留空（`""` / 全空白） | `None`，表示全天日程 |
 
 一律 `ValidationError`，消息回显原文（形如“日期「明天」无法识别”）：
 
@@ -106,6 +134,8 @@ class ScheduleRepository(Protocol):
 - 备注：`strip()` 后保存；最长 **500 字符**；空串合法，不转 `None`。
 - 保存的是去空白后的值（标题 `"  周报  "` → `"周报"`）。
 - 时间精度为**分钟**：`Schedule.__post_init__` 把秒与微秒截断为 0，界面 `HH:MM` 往返不丢数据。
+- 时间可以留空：`parse_time("")` 返回 `None`，`Schedule.time=None` 表示全天；全天日程在
+  `list_by_date` 中排在同日定时日程之前，界面显示“全天”。
 - 空 id：`update_schedule` / `delete_schedule` 抛 `ValidationError("日程 ID 不能为空")`，
   与“记录不存在”区分开；传入 id 先 `strip()` 再查。
 
@@ -135,19 +165,22 @@ uv run mypy src tests
 
 ### 9.1 端口定义：删除 UI 侧重复签名
 
-`ui/ports.py` 的 `ScheduleServicePort` 必须直接引用后端协议，不再复制/改写四个方法：
+`ui/ports.py` 的 `ScheduleServicePort` 必须直接引用后端协议，不再复制/改写六个方法：
 
 ```python
-from schedule_management.application.contracts import ScheduleUseCases
+from schedule_management.application.contracts import ScheduleUseCases, ScheduleView
 
 #: 服务端口就是后端权威协议，不再维护第二份定义。
 ScheduleServicePort = ScheduleUseCases
+
+#: 界面侧的日程形状同样别名到后端协议，presenters / 测试替身共用同一个类型。
+ScheduleLike = ScheduleView
 ```
 
 - 不要保留 `Sequence[ScheduleLike]` 版本的服务方法重新声明；`list[Schedule]` 是
-  `Sequence[ScheduleLike]` 的子类型，`Schedule` 结构上满足 `ScheduleLike`，mypy 可直接通过。
-- `ScheduleLike` 可以继续留在 UI 侧供 `presenters.to_row` 使用，但**服务端口**只认
-  `ScheduleUseCases`。
+  `Sequence[ScheduleView]` 的子类型，`Schedule` 结构上满足 `ScheduleView`，mypy 可直接通过。
+- `ScheduleLike` 只是 `ScheduleView` 的别名，供 `presenters.to_row` 等界面代码沿用旧名；
+  **不得**再定义一份结构相同的 `Protocol`。
 - 需要新方法、新字段或修改签名时，先改 `application/contracts.py` 与本文档并走 PR；
   UI 侧不得先行扩展或本地兜底，避免两份签名再次漂移。
 
@@ -186,3 +219,11 @@ def main(...) -> int:
   `finally: connection.close()` 关闭。
 - 一个服务一个连接，只在 GUI 线程使用（`check_same_thread` 默认开启）；不要跨线程共享，
   也不要每次点击新开连接。
+
+### 9.4 日历按月标记（下一分支接入）
+
+- 日历切换月份时，用该月首日与末日调用一次
+  `service.count_by_date(first_day, last_day)`，返回 `dict[dt.date, int]`；
+  键集合用于底色标记，值用于“当天几条”小徽标。区间是**闭区间**，不要逐日调用 `list_schedules`。
+- 只有全天日程的日期同样计入；`time` 为 `None` 时列表显示“全天”，该分支不负责
+  绘制标记与徽标，只消费本方法的结果。

@@ -150,6 +150,9 @@ class ScheduleController:
 
         预填的来源有两个：三个字段取自列表行，日期取当前筛选日期——
         列表只显示三列（时间/标题/备注），日期隐含在筛选条件里。
+
+        全天日程在表单里是空时间：`time_text` 的“全天”只是展示文案，
+        原样回填会在保存时被服务层当成非法时间解析，因此必须还原成空串。
         """
         row = self._require_selection()
         if row is None:
@@ -159,7 +162,7 @@ class ScheduleController:
         initial = ScheduleDraft(
             title=row.title_text,
             date_text=presenters.format_date(day) if day is not None else "",
-            time_text=row.time_text,
+            time_text="" if row.all_day else row.time_text,
             notes=row.notes_text,
         )
         self._run_form(

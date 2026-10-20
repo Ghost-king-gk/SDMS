@@ -28,6 +28,16 @@ def test_title_is_stripped() -> None:
     assert schedule.title == "写周报"
 
 
+def test_time_may_be_none_for_all_day_schedule() -> None:
+    schedule = Schedule(id="id-1", title="全天的事", date=DAY, time=None)
+    assert schedule.time is None
+
+
+def test_all_day_schedule_with_omitted_time_is_valid() -> None:
+    schedule = Schedule(id="id-1", title="全天的事", date=DAY)
+    assert schedule.time is None
+
+
 def test_time_truncated_to_minute() -> None:
     schedule = Schedule(id="id-1", title="写周报", date=DAY, time=time(9, 30, 45, 123456))
     assert schedule.time == time(9, 30)

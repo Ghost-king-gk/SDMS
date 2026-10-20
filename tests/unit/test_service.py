@@ -59,6 +59,17 @@ def test_create_is_immediately_listed(service: ScheduleService) -> None:
     assert service.list_schedules(DAY) == [created]
 
 
+def test_create_with_blank_time_saves_all_day(
+    service: ScheduleService, repository: InMemoryScheduleRepository
+) -> None:
+    created = service.create_schedule("全天的事", "2026-10-15", "   ", "")
+
+    assert created.time is None
+    stored = repository.get(created.id)
+    assert stored is not None
+    assert stored.time is None
+
+
 def test_create_generates_distinct_ids(service: ScheduleService) -> None:
     first = service.create_schedule("第一条", "2026-10-15", "09:00", "")
     second = service.create_schedule("第二条", "2026-10-15", "10:00", "")
@@ -92,6 +103,51 @@ def test_update_missing_schedule_raises(service: ScheduleService) -> None:
 
     assert "no-such-id" in str(excinfo.value)
     assert "已经不在列表里" in str(excinfo.value)
+
+
+def test_update_with_blank_time_clears_time(
+    service: ScheduleService, repository: InMemoryScheduleRepository
+) -> None:
+    created = service.create_schedule("写周报", "2026-10-15", "09:05", "")
+
+    updated = service.update_schedule(created.id, "写周报", "2026-10-15", "", "")
+
+    assert updated.time is None
+    stored = repository.get(created.id)
+    assert stored is not None
+    assert stored.time is None
+
+
+def test_count_by_date_uses_closed_interval(service: ScheduleService) -> None:
+    service.create_schedule("前一天", "2026-10-14", "", "")
+    service.create_schedule("起点一", "2026-10-15", "09:00", "")
+    service.create_schedule("起点二", "2026-10-15", "", "")
+    service.create_schedule("终点", "2026-10-16", "", "")
+    service.create_schedule("后一天", "2026-10-17", "09:00", "")
+
+    assert service.count_by_date(DAY, NEXT_DAY) == {DAY: 2, NEXT_DAY: 1}
+
+
+def test_count_by_date_empty_range(service: ScheduleService) -> None:
+    service.create_schedule("写周报", "2026-10-15", "09:05", "")
+
+    assert service.count_by_date(NEXT_DAY, date(2026, 10, 20)) == {}
+    assert service.count_by_date(NEXT_DAY, DAY) == {}
+
+
+def test_search_matches_title_or_notes(service: ScheduleService) -> None:
+    by_title = service.create_schedule("周报整理", "2026-10-15", "09:00", "")
+    by_notes = service.create_schedule("买牛奶", "2026-10-15", "10:00", "顺便打印周报")
+    service.create_schedule("无关事项", "2026-10-15", "11:00", "")
+
+    assert service.search_schedules("周报") == [by_title, by_notes]
+
+
+def test_search_blank_query_returns_empty(service: ScheduleService) -> None:
+    service.create_schedule("周报整理", "2026-10-15", "09:00", "")
+
+    assert service.search_schedules("") == []
+    assert service.search_schedules("   ") == []
 
 
 def test_delete_removes_schedule(service: ScheduleService) -> None:

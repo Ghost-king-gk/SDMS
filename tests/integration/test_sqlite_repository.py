@@ -18,7 +18,7 @@ def make_schedule(
     *,
     title: str = "买菜",
     day: date = DAY,
-    at: time = time(9, 30),
+    at: time | None = time(9, 30),
     notes: str = "",
 ) -> Schedule:
     return Schedule(id=new_schedule_id(), title=title, date=day, time=at, notes=notes)
@@ -95,6 +95,103 @@ def test_date_index_exists(tmp_path: Path) -> None:
             "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_schedules_date'"
         ).fetchone()
     assert row == ("idx_schedules_date",)
+
+
+def test_all_day_schedule_round_trips_through_empty_string_sentinel(tmp_path: Path) -> None:
+    """全天日程以空串落库（time 列仍是 NOT NULL），读出时还原成 None。"""
+    with closing(sqlite3.connect(tmp_path / "schedule.db")) as connection:
+        repo = SqliteScheduleRepository(connection)
+        all_day = make_schedule(title="全天的事", at=None)
+        repo.add(all_day)
+
+        raw = connection.execute(
+            "SELECT time FROM schedules WHERE id = ?", (all_day.id,)
+        ).fetchone()
+        assert raw == ("",)
+        assert repo.get(all_day.id) == all_day
+        assert repo.list_by_date(DAY) == [all_day]
+
+
+def test_all_day_schedules_sort_before_timed_ones(tmp_path: Path) -> None:
+    with closing(sqlite3.connect(tmp_path / "schedule.db")) as connection:
+        repo = SqliteScheduleRepository(connection)
+        early = make_schedule(title="清晨", at=time(0, 0))
+        all_day = make_schedule(title="全天", at=None)
+        late = make_schedule(title="深夜", at=time(23, 59))
+        for schedule in (late, early, all_day):
+            repo.add(schedule)
+
+        assert [item.id for item in repo.list_by_date(DAY)] == [
+            all_day.id,
+            early.id,
+            late.id,
+        ]
+
+
+def test_count_by_date_uses_closed_interval(tmp_path: Path) -> None:
+    with closing(sqlite3.connect(tmp_path / "schedule.db")) as connection:
+        repo = SqliteScheduleRepository(connection)
+        for day in (date(2026, 10, 13), date(2026, 10, 14), date(2026, 10, 16)):
+            repo.add(make_schedule(day=day))
+        repo.add(make_schedule(day=date(2026, 10, 14)))
+
+        assert repo.count_by_date(date(2026, 10, 14), date(2026, 10, 16)) == {
+            date(2026, 10, 14): 2,
+            date(2026, 10, 16): 1,
+        }
+
+
+def test_count_by_date_empty_interval(tmp_path: Path) -> None:
+    with closing(sqlite3.connect(tmp_path / "schedule.db")) as connection:
+        repo = SqliteScheduleRepository(connection)
+        repo.add(make_schedule(day=DAY))
+
+        assert repo.count_by_date(date(2026, 10, 15), date(2026, 10, 20)) == {}
+        assert repo.count_by_date(date(2026, 10, 15), DAY) == {}
+
+
+def test_count_by_date_corrupted_date_raises_storage_error(tmp_path: Path) -> None:
+    with closing(sqlite3.connect(tmp_path / "schedule.db")) as connection:
+        repo = SqliteScheduleRepository(connection)
+        connection.execute(
+            "INSERT INTO schedules (id, title, date, time, notes) VALUES (?, ?, ?, ?, ?)",
+            ("bad-date", "坏行", "2026-13-45", "09:30:00", ""),
+        )
+        connection.commit()
+
+        with pytest.raises(StorageError, match="存储中的日程数据无法解析"):
+            repo.count_by_date(date(2026, 1, 1), date(2027, 1, 1))
+
+
+def test_search_escapes_like_wildcards(tmp_path: Path) -> None:
+    with closing(sqlite3.connect(tmp_path / "schedule.db")) as connection:
+        repo = SqliteScheduleRepository(connection)
+        percent = make_schedule(title="完成 100%")
+        underscore = make_schedule(title="a_b")
+        backslash = make_schedule(title="back\\slash")
+        plain = make_schedule(title="aXb")
+        for schedule in (percent, underscore, backslash, plain):
+            repo.add(schedule)
+
+        assert [item.id for item in repo.search_schedules("%")] == [percent.id]
+        assert [item.id for item in repo.search_schedules("_")] == [underscore.id]
+        assert [item.id for item in repo.search_schedules("\\")] == [backslash.id]
+
+
+def test_search_orders_by_date_then_all_day_then_time(tmp_path: Path) -> None:
+    with closing(sqlite3.connect(tmp_path / "schedule.db")) as connection:
+        repo = SqliteScheduleRepository(connection)
+        later_day = make_schedule(title="搜索词", day=date(2026, 10, 16))
+        early_all_day = make_schedule(title="搜索词", day=DAY, at=None)
+        early_timed = make_schedule(title="搜索词", day=DAY, at=time(8, 0))
+        for schedule in (later_day, early_timed, early_all_day):
+            repo.add(schedule)
+
+        assert [item.id for item in repo.search_schedules("搜索词")] == [
+            early_all_day.id,
+            early_timed.id,
+            later_day.id,
+        ]
 
 
 def test_get_corrupted_date_raises_storage_error(tmp_path: Path) -> None:

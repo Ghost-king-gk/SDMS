@@ -399,7 +399,7 @@ delete_schedule(schedule_id: str) -> None
 | 端口 | 当前实现（Windows 桌面） | 未来可换成的实现 |
 | --- | --- | --- |
 | `MainViewPort` | P10 的 `ui/app.py` 适配的 `QMainWindow` | `CliMainView`（输出打 stdout，提问用 `input()`）、WebUI 的 HTTP handler、乃至测试里的 `FakeMainView` |
-| `ScheduleServicePort` | zch 的 `application/service.py` | 任何满足同样四个方法的服务；换存储不影响这一层 |
+| `ScheduleServicePort` | zch 的 `application/service.py` | 任何满足同样六个方法的服务；换存储不影响这一层 |
 
 `MainViewPort` 的十一个方法（九个单向输出 + `ask_delete_confirm` / `open_schedule_form` 两个提问）就是**前端必须兑现的全部契约**。新前端只要兑现这十一个方法，就能接上现成的 `ScheduleController`。
 
@@ -513,7 +513,7 @@ P10 引入了真正 import `PySide6` 的窗口模块，原先"`ui/*.py` 一律�
 
 ### 12.6 本轮明确没做的事
 
-- **日历上给有日程的日期加标记**。`calendar_view.mark_days()` 已经写好，但标记需要"这个月哪些日期有日程"的数据，那要求后端提供按月查询（建议 `list_days_with_schedules(month)`）。窗口绕开 controller 自己去遍历查询会破坏第 11 节的接缝，所以宁可先留白。**这是端口待扩展项，需与 zch 确认后写进契约。**
+- **日历上给有日程的日期加标记**。`calendar_view.mark_days()` 已经写好，但标记需要“这个月哪些日期有日程、各有几条”的数据，那要求后端提供按月查询（建议 `count_by_date(start, end)`）。窗口绕开 controller 自己去遍历查询会破坏第 11 节的接缝，所以宁可先留白。**这是端口待扩展项，需与 zch 确认后写进契约。**
 - 键盘快捷键、右键菜单、拖拽调整等增强交互——不属于课程要求的六个状态。
 - 真实持久化（P10 时留白，现已补齐）：SQLite 存储层已合流，`shoot_ui.py` 的真服务场景验过 V-14（见 12.4 节）；仍未覆盖真实用户库的迁移与损坏恢复，那属于存储层集成测试的职责。
 - 日期时间解析的"正式版本"（P10 时留白，现已补齐）：宽容解析已由后端服务层接管，界面只交原始字符串；替身里那份最小实现仅用于演示模式。

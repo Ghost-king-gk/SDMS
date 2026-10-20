@@ -62,10 +62,14 @@ class TestTimeParsing:
     def test_pads_single_digit_hour(self) -> None:
         assert parse_time("9:05") == dt.time(9, 5)
 
-    @pytest.mark.parametrize("text", ["25:00", "09:60", "9点05", ""])
+    @pytest.mark.parametrize("text", ["25:00", "09:60", "9点05"])
     def test_rejects_out_of_range_or_unreadable(self, text: str) -> None:
         with pytest.raises(ValidationError):
             parse_time(text)
+
+    @pytest.mark.parametrize("text", ["", "   "])
+    def test_blank_time_means_all_day(self, text: str) -> None:
+        assert parse_time(text) is None
 
 
 class TestServiceBehaviour:
@@ -95,6 +99,67 @@ class TestServiceBehaviour:
 
         titles = [item.title for item in service.list_schedules(TODAY)]
         assert titles == ["早上的事", "下午的事", "晚上的事"]
+
+    def test_all_day_items_sort_before_timed_ones(self) -> None:
+        service = DevStubScheduleService()
+        service.create_schedule("晚上的事", "2026-10-15", "20:00", "")
+        service.create_schedule("全天的事", "2026-10-15", "", "")
+
+        assert [item.title for item in service.list_schedules(TODAY)] == [
+            "全天的事",
+            "晚上的事",
+        ]
+
+    def test_blank_time_creates_all_day_item(self) -> None:
+        service = DevStubScheduleService()
+        created = service.create_schedule("全天的事", "2026-10-15", "   ", "")
+
+        assert created.time is None
+
+    def test_update_with_blank_time_clears_time(self) -> None:
+        service = DevStubScheduleService()
+        created = service.create_schedule("写周报", "2026-10-15", "09:00", "")
+
+        updated = service.update_schedule(created.id, "写周报", "2026-10-15", "", "")
+
+        assert updated.time is None
+
+    def test_count_by_date_uses_closed_interval(self) -> None:
+        service = DevStubScheduleService()
+        service.create_schedule("前一天", "2026-10-14", "", "")
+        service.create_schedule("起点一", "2026-10-15", "09:00", "")
+        service.create_schedule("起点二", "2026-10-15", "", "")
+        service.create_schedule("终点", "2026-10-16", "", "")
+        service.create_schedule("后一天", "2026-10-17", "09:00", "")
+
+        assert service.count_by_date(TODAY, TODAY + dt.timedelta(days=1)) == {
+            TODAY: 2,
+            TODAY + dt.timedelta(days=1): 1,
+        }
+
+    def test_count_by_date_empty_range(self) -> None:
+        service = DevStubScheduleService()
+        service.create_schedule("今天的事", "2026-10-15", "09:00", "")
+
+        assert service.count_by_date(TODAY + dt.timedelta(days=1), TODAY) == {}
+        assert (
+            service.count_by_date(TODAY + dt.timedelta(days=1), TODAY + dt.timedelta(days=5)) == {}
+        )
+
+    def test_search_matches_title_or_notes(self) -> None:
+        service = DevStubScheduleService()
+        by_title = service.create_schedule("周报整理", "2026-10-15", "09:00", "")
+        by_notes = service.create_schedule("买牛奶", "2026-10-15", "10:00", "打印周报")
+        service.create_schedule("无关事项", "2026-10-15", "11:00", "")
+
+        assert service.search_schedules("周报") == [by_title, by_notes]
+
+    def test_search_blank_query_returns_empty(self) -> None:
+        service = DevStubScheduleService()
+        service.create_schedule("周报整理", "2026-10-15", "09:00", "")
+
+        assert service.search_schedules("") == []
+        assert service.search_schedules("   ") == []
 
     def test_empty_day_returns_empty_list_instead_of_raising(self) -> None:
         service = DevStubScheduleService()

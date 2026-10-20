@@ -66,7 +66,7 @@ class MainViewPort(Protocol):
     def show_detail(self, row: ScheduleRow) -> None:
         """展示一条日程的详情，数据来自列表已有内容，不再查一次服务。"""
 
-    def ask_delete_confirm(self, row: ScheduleRow) -> bool: # type: ignore
+    def ask_delete_confirm(self, row: ScheduleRow) -> bool:
         """弹出删除确认；返回 True 才真的删。**调用它不代表已经删了。**"""
 
     def open_schedule_form(self, request: FormRequest) -> ScheduleDraft | None:

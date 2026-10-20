@@ -36,6 +36,7 @@ ITEM_LATER = StubSchedule(
     id="id-2", title="开组会", date=TODAY, time=dt.time(15, 0), notes="带上机"
 )
 ITEM_TOMORROW = StubSchedule(id="id-3", title="体检", date=TOMORROW, time=dt.time(8, 0))
+ITEM_ALL_DAY = StubSchedule(id="id-4", title="休息", date=TODAY, time=None)
 
 
 def build_controller(
@@ -285,6 +286,27 @@ def test_edit_prefills_from_row_and_calls_update_with_id() -> None:
     assert update_call[1] == "id-1", "必须按 id 修改，标题会重复"
     assert update_call[2] == "写周报（终稿）"
     assert view.last_status == "已修改「写周报（终稿）」"
+
+
+def test_edit_prefills_all_day_with_empty_time_then_saves_it_empty() -> None:
+    """全天行显示“全天”，但表单里必须是空时间，否则保存会被服务层拒绝。"""
+    controller, service, view = build_controller(
+        items=(ITEM_ALL_DAY,),
+        view=FakeMainView(form_results=(a_draft(title="休息一天", time_text=""),)),
+    )
+    controller.start()
+    controller.select_row("id-4")
+
+    controller.request_edit()
+
+    first = view.form_requests[0]
+    assert first.initial is not None
+    assert first.initial.time_text == "", "“全天”只是展示文本，不能回填进时间输入框"
+    assert service.calls_of("update") == [("update", "id-4", "休息一天", "2026-10-15", "", "")], (
+        "提交时也必须把空时间原样交给服务层"
+    )
+    assert view.last_rows[0].time_text == "全天", "列表仍然显示“全天”"
+    assert view.last_status == "已修改「休息一天」"
 
 
 def test_updated_row_can_leave_current_day_list() -> None:

@@ -57,13 +57,17 @@ def parse_date(text: str) -> dt.date:
     raise ValidationError(f"日期「{raw}」无法识别，请写成 2026-10-15 这样")
 
 
-def parse_time(text: str) -> dt.time:
+def parse_time(text: str) -> dt.time | None:
     """把时间文本转成 :class:`datetime.time`，精度到分钟。
 
-    接受 ``H:MM`` 与 ``HH:MM``（``9:05`` 与 ``09:05`` 等价）；``25:00``、
-    ``09:60`` 这类越界值抛 ``ValidationError``，消息回显原文。
+    ``strip()`` 后为空串表示**全天日程**，返回 ``None``；非空时接受 ``H:MM``
+    与 ``HH:MM``（``9:05`` 与 ``09:05`` 等价），``25:00``、``09:60`` 这类越界值
+    抛 ``ValidationError``，消息回显原文。
     """
     raw = text.strip()
+    if not raw:
+        return None
+
     matched = _TIME_PATTERN.match(raw)
     if matched is None:
         raise ValidationError(f"时间「{raw}」无法识别，请写成 09:30 这样")
@@ -98,10 +102,11 @@ def validate(
     date_text: str,
     time_text: str,
     notes: str,
-) -> tuple[str, dt.date, dt.time, str]:
+) -> tuple[str, dt.date, dt.time | None, str]:
     """校验四个字段并按「标题、日期、时间、备注」的顺序返回干净值。
 
-    这是服务层创建与修改共用的唯一校验入口，保证两条路径规则完全一致。
+    时间留空（去空白后为空串）表示全天，返回 ``None``；这是服务层创建与修改
+    共用的唯一校验入口，保证两条路径规则完全一致。
     """
     clean_title, clean_notes = clean_fields(title, notes)
     return clean_title, parse_date(date_text), parse_time(time_text), clean_notes

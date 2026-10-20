@@ -23,12 +23,17 @@ class ScheduleRow:
     但后续所有操作（修改、删除、查看）都只能拿 id 去调服务。标题可以重复，
     行号会随排序变化，用它们反查记录是本项目明确禁止的做法
     （见 `docs/figures/ui-interaction.md` 第 3 节）。
+
+    `all_day` 是展示文本之外的**语义标记**：全天日程的 `time_text` 是“全天”，
+    这句话只能给人看，回填表单时必须还原成空时间，否则保存时会被服务层
+    当成非法时间解析。它放在最后并带默认值，既有的四参数构造仍然可用。
     """
 
     schedule_id: str
     time_text: str
     title_text: str
     notes_text: str
+    all_day: bool = False
 
 
 @dataclass(frozen=True)

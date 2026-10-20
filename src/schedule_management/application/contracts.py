@@ -14,6 +14,10 @@ class ScheduleRepository(Protocol):
 
     def list_by_date(self, day: dt.date) -> list[Schedule]: ...
 
+    def count_by_date(self, start: dt.date, end: dt.date) -> dict[dt.date, int]: ...
+
+    def search_schedules(self, text: str) -> list[Schedule]: ...
+
     def update(self, schedule: Schedule) -> bool: ...
 
     def delete(self, schedule_id: str) -> bool: ...
@@ -41,7 +45,8 @@ class ScheduleView(Protocol):
     def date(self) -> dt.date: ...
 
     @property
-    def time(self) -> dt.time: ...
+    def time(self) -> dt.time | None:
+        """具体时刻；``None`` 表示全天日程（用户没有填写时间）。"""
 
     @property
     def notes(self) -> str: ...
@@ -91,4 +96,20 @@ class ScheduleUseCases(Protocol):
 
     def delete_schedule(self, schedule_id: str) -> None:
         """删除一条日程；找不到记录时抛 ``ScheduleNotFoundError``，不静默成功。"""
+        ...
+
+    def count_by_date(self, start: dt.date, end: dt.date) -> dict[dt.date, int]:
+        """返回 ``[start, end]`` **闭区间**内每个有日程的日期及条数。
+
+        供日历按月标记与“当天几条”徽标使用：键用于底色标记，值用于徽标；
+        没有日程的日期不出现在字典里，区间为空或 ``start > end`` 时返回空字典。
+        """
+        ...
+
+    def search_schedules(self, text: str) -> Sequence[ScheduleView]:
+        """按标题或备注**包含** ``text`` 搜索，返回命中日程。
+
+        ``text`` 去空白后为空时返回空列表；``%``、``_``、``\\`` 按字面量匹配，
+        不做通配符解释。结果按日期升序、全天在前、再按时间与 id 排序。
+        """
         ...
