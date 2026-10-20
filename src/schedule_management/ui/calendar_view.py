@@ -21,7 +21,7 @@ from __future__ import annotations
 import datetime as dt
 from collections.abc import Mapping
 
-from PySide6.QtCore import QDate, QLocale, QRect, Qt, Signal
+from PySide6.QtCore import QDate, QLocale, QPoint, QRect, Qt, Signal
 from PySide6.QtGui import QColor, QContextMenuEvent, QFont, QPainter, QPen, QTextCharFormat
 from PySide6.QtWidgets import (
     QCalendarWidget,
@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMenu,
     QPushButton,
+    QTableView,
     QVBoxLayout,
     QWidget,
 )
@@ -117,6 +118,26 @@ class _CountCalendar(QCalendarWidget):
     def set_dark(self, dark: bool) -> None:
         self._dark = dark
         self.updateCells()
+
+    def date_at(self, pos: QPoint) -> dt.date | None:
+        """把本控件的坐标换成日期格上的日期；不在有效日期格上时返回 None。
+
+        `QCalendarWidget` 没有公开「坐标 → 日期」的接口，只能向内部
+        `QTableView` 要 index，再按「当月 1 日、周一开头」的排布反推。
+        右键菜单用它来确定用户实际点的是哪一天，而不是沿用旧的选中日。
+        """
+        view = self.findChild(QTableView)
+        if view is None:
+            return None
+        index = view.indexAt(view.viewport().mapFrom(self, pos))
+        if not index.isValid():
+            return None
+        first = dt.date(self.yearShown(), self.monthShown(), 1)
+        day = first + dt.timedelta(days=index.row() * 7 + index.column() - first.weekday())
+        # 月历只显示当月；首尾空格即使有 index 也不能当成相邻月份的一天。
+        if (day.year, day.month) != (first.year, first.month):
+            return None
+        return day
 
 
 class CalendarPanel(QWidget):
@@ -230,18 +251,19 @@ class CalendarPanel(QWidget):
     # ------------------------------------------------------------ 右键菜单
 
     def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802
-        """日历空白处/日期格上右键：给「在这一天新增」与「回到今天」两个入口。
+        """日历上右键：给「在这一天新增」与「回到今天」两个入口。
 
-        右键不要求改变当前选中日（`QCalendarWidget` 自己会处理日期格的右键），
-        因此菜单文案必须把**当前选中的日期**写出来，避免用户在别的日子上
-        右键、却按菜单新增到另一个日期。
+        日期取右键落点所在的日期格，而不是当前选中日：右键 26 号，菜单动作
+        就作用于 26 号。只有落点不在日期格上时才退回当前选中日。
         """
-        self._build_context_menu().exec(event.globalPos())
+        day = self._calendar.date_at(self._calendar.mapFrom(self, event.pos()))
+        self._build_context_menu(day if day is not None else self.selected_day()).exec(
+            event.globalPos()
+        )
         event.accept()
 
-    def _build_context_menu(self) -> QMenu:
+    def _build_context_menu(self, day: dt.date) -> QMenu:
         """菜单的构建单独拆出来，测试可以只检查菜单项而不进入模态循环。"""
-        day = self.selected_day()
         menu = QMenu(self)
         add_action = menu.addAction(f"在这一天新增（{presenters.date_heading(day)}）")
         add_action.triggered.connect(lambda _checked=False: self.day_activated.emit(day))
