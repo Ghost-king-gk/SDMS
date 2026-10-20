@@ -70,7 +70,7 @@ class SimpleSchedule:
     id: str
     title: str
     date: dt.date
-    time: dt.time
+    time: dt.time | None
     notes: str
 
 
@@ -104,9 +104,12 @@ def parse_date(text: str) -> dt.date:
     raise ValidationError(f"日期「{raw}」无法识别")
 
 
-def parse_time(text: str) -> dt.time:
-    """把 `HH:MM` 转成 `time`；写不出认得出来的样子就抛 `ValidationError`。"""
+def parse_time(text: str) -> dt.time | None:
+    """把 `HH:MM` 转成 `time`；留空表示全天返回 `None`，否则抛 `ValidationError`。"""
     raw = text.strip()
+    if not raw:
+        return None
+
     matched = _TIME_PATTERN.match(raw)
     if matched is None:
         raise ValidationError(f"时间「{raw}」无法识别，请写成 09:30 这样")
@@ -123,7 +126,7 @@ def _clean_fields(
     date_text: str,
     time_text: str,
     notes: str,
-) -> tuple[str, dt.date, dt.time, str]:
+) -> tuple[str, dt.date, dt.time | None, str]:
     """校验四个字段并返回干净值；任何一条不合法就地抛 `ValidationError`。
 
     校验规则按 T-04 的暂定值（标题 100、备注 500），最终以契约为准。
@@ -142,6 +145,11 @@ def _clean_fields(
     return clean_title, parse_date(date_text), parse_time(time_text), clean_notes
 
 
+def _sort_key(item: SimpleSchedule) -> tuple[dt.date, bool, dt.time, str]:
+    """统一排序：日期升序、全天在前、再按时间与 id。"""
+    return (item.date, item.time is not None, item.time or dt.time.min, item.id)
+
+
 class DevStubScheduleService:
     """内存版服务：接口满足 `ScheduleServicePort`，数据只存在进程内存里。
 
@@ -152,16 +160,37 @@ class DevStubScheduleService:
     def __init__(self, seed: tuple[SimpleSchedule, ...] = ()) -> None:
         self._items: dict[str, SimpleSchedule] = {item.id: item for item in seed}
 
-    # ------------------------------------------------------------ 端口四个方法
+    # ------------------------------------------------------------ 端口六个方法
 
     def list_schedules(self, day: dt.date) -> list[SimpleSchedule]:
         """按日期查；无记录返回空列表而不是报错，由界面显示空状态。
 
         排序在这里做：`presenters.to_rows` 明确不排序（界面只照抄顺序），
-        确定性排序由服务/仓储负责。按 (时间, id) 排，保证同样的输入永远同样的顺序。
+        确定性排序由服务/仓储负责。全天日程（`time is None`）排在最前，
+        再按 (时间, id) 排，保证同样的输入永远同样的顺序。
         """
         same_day = [item for item in self._items.values() if item.date == day]
-        return sorted(same_day, key=lambda item: (item.time, item.id))
+        return sorted(same_day, key=_sort_key)
+
+    def count_by_date(self, start: dt.date, end: dt.date) -> dict[dt.date, int]:
+        """扫描内存，返回闭区间 `[start, end]` 内每个有日程的日期及条数。"""
+        counts: dict[dt.date, int] = {}
+        for item in self._items.values():
+            if start <= item.date <= end:
+                counts[item.date] = counts.get(item.date, 0) + 1
+        return counts
+
+    def search_schedules(self, text: str) -> list[SimpleSchedule]:
+        """按标题或备注包含搜索；空查询返回空列表，`%`/`_`/`\\` 按字面量匹配。"""
+        needle = text.strip().casefold()
+        if not needle:
+            return []
+        matches = [
+            item
+            for item in self._items.values()
+            if needle in item.title.casefold() or needle in item.notes.casefold()
+        ]
+        return sorted(matches, key=_sort_key)
 
     def create_schedule(
         self,

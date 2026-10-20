@@ -39,7 +39,8 @@ class ScheduleLike(Protocol):
     def date(self) -> dt.date: ...
 
     @property
-    def time(self) -> dt.time: ...
+    def time(self) -> dt.time | None:
+        """具体时刻；``None`` 表示全天日程。"""
 
     @property
     def notes(self) -> str: ...
@@ -86,6 +87,14 @@ class ScheduleServicePort(Protocol):
 
     def delete_schedule(self, schedule_id: str) -> None:
         """删除指定日程；记录不存在是业务错误，由服务层抛出。"""
+
+    def count_by_date(self, start: dt.date, end: dt.date) -> dict[dt.date, int]:
+        """返回闭区间 `[start, end]` 内每个有日程的日期及条数，供日历标记与徽标使用。"""
+        ...
+
+    def search_schedules(self, text: str) -> Sequence[ScheduleLike]:
+        """按标题或备注包含搜索；空查询返回空列表。"""
+        ...
 
 
 class MainViewPort(Protocol):

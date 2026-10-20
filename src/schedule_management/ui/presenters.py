@@ -75,8 +75,10 @@ def format_date(day: dt.date) -> str:
     return day.strftime(DATE_FORMAT)
 
 
-def format_time(at: dt.time) -> str:
-    """回填与显示用的标准时间文本（HH:MM，分钟精度）。"""
+def format_time(at: dt.time | None) -> str:
+    """回填与显示用的时间文本（HH:MM，分钟精度）；``None`` 显示“全天”。"""
+    if at is None:
+        return "全天"
     return at.strftime(TIME_FORMAT)
 
 

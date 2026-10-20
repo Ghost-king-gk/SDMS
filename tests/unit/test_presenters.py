@@ -33,7 +33,7 @@ def a_schedule(
     identifier: str = "id-1",
     title: str = "写周报",
     *,
-    at: dt.time = A_TIME,
+    at: dt.time | None = A_TIME,
     notes: str = "给导师",
 ) -> ScheduleLike:
     """构造一个结构兼容的最小条目：不依赖尚未落地的领域类。"""
@@ -49,6 +49,10 @@ def test_format_time_uses_minute_precision() -> None:
     assert presenters.format_time(dt.time(18, 0)) == "18:00"
 
 
+def test_format_time_none_means_all_day() -> None:
+    assert presenters.format_time(None) == "全天"
+
+
 def test_date_heading_carries_weekday() -> None:
     # 2026-10-15 是周四：这条断言同时兜住星期表的顺序（周一必须先出场）。
     assert presenters.date_heading(A_DAY) == "2026-10-15 周四"
@@ -60,6 +64,13 @@ def test_to_row_keeps_id_alongside_display_text() -> None:
 
     assert row.schedule_id == "id-1", "行必须携带 id，否则后续操作只能靠行号或标题反查"
     assert (row.time_text, row.title_text, row.notes_text) == ("09:05", "写周报", "给导师")
+
+
+def test_to_row_renders_all_day_row() -> None:
+    row = presenters.to_row(a_schedule(at=None))
+
+    assert row.time_text == "全天"
+    assert (row.title_text, row.notes_text) == ("写周报", "给导师")
 
 
 def test_to_rows_preserves_service_order() -> None:

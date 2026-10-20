@@ -8,7 +8,7 @@ Qt 的 `QCalendarWidget` 交叉平台可用性没问题，但两处默认值和�
 
 另外预留了「有日程的日期加标记」的能力（`mark_days`），但 P10 阶段**没有调用它**：
 标记需要"这个月哪些日期有日程"的数据，那要求后端提供按月查询
-（建议 `list_days_with_schedules(month)`），属于尚未确认的端口扩展。
+（建议 `count_by_date(start, end)`），属于尚未确认的端口扩展。
 与其让窗口绕开 controller 自己去遍历查询，不如先把能力备好、来源留白，
 并在 `ui-interaction.md` 里记为待办。
 """

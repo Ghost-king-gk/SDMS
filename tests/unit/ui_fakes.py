@@ -53,7 +53,7 @@ class StubSchedule:
     id: str
     title: str
     date: dt.date
-    time: dt.time
+    time: dt.time | None
     notes: str = ""
 
 
@@ -71,8 +71,10 @@ def _day_from(text: str) -> dt.date:
         raise ValidationError(f"无法识别的日期：{text}") from exc
 
 
-def _time_from(text: str) -> dt.time:
+def _time_from(text: str) -> dt.time | None:
     normalized = text.strip().replace("：", ":")
+    if not normalized:
+        return None
     try:
         return dt.time.fromisoformat(normalized)
     except ValueError as exc:
@@ -129,6 +131,25 @@ class FakeScheduleService:
         if self._errors["list"] is not None:
             raise self._errors["list"]
         return [item for item in self._items if item.date == day]
+
+    def count_by_date(self, start: dt.date, end: dt.date) -> dict[dt.date, int]:
+        self.calls.append(("count_by_date", start, end))
+        counts: dict[dt.date, int] = {}
+        for item in self._items:
+            if start <= item.date <= end:
+                counts[item.date] = counts.get(item.date, 0) + 1
+        return counts
+
+    def search_schedules(self, text: str) -> list[StubSchedule]:
+        self.calls.append(("search", text))
+        needle = text.strip().casefold()
+        if not needle:
+            return []
+        return [
+            item
+            for item in self._items
+            if needle in item.title.casefold() or needle in item.notes.casefold()
+        ]
 
     def create_schedule(
         self, title: str, date_text: str, time_text: str, notes: str

@@ -24,12 +24,14 @@
 | `id` | `str` | `id` | `TEXT PRIMARY KEY` | 原样 | 原样 |
 | `title` | `str` | `title` | `TEXT NOT NULL` | 原样（已去除首尾空白） | 原样 |
 | `date` | `datetime.date` | `date` | `TEXT NOT NULL` | `isoformat()` → `YYYY-MM-DD` | `date.fromisoformat()` |
-| `time` | `datetime.time` | `time` | `TEXT NOT NULL` | `isoformat()` → `HH:MM:SS` | `time.fromisoformat()` |
+| `time` | `datetime.time \| None` | `time` | `TEXT NOT NULL` | `None` → `""`（全天）；否则 `isoformat()` → `HH:MM:SS` | `""` → `None`；否则 `time.fromisoformat()` |
 | `notes` | `str` | `notes` | `TEXT NOT NULL DEFAULT ''` | 原样 | 原样 |
 
 说明：
 
 - 时间精度为分钟。`Schedule.__post_init__` 会把秒和微秒截断为 0，因此 `time.isoformat()` 实际恒为 `HH:MM:00`。
+- `time` 允许为 `None`（全天日程）。SQLite 列保持 `TEXT NOT NULL`，用**空串**作哨兵，
+  不重建旧库；空串读回即 `None`，其他无法解析的值仍按坏行转 `StorageError`。
 - `date` 与 `time` 存字符串后，字典序即时间序，可直接用于 `ORDER BY`，不需要额外转换。
 - `id` 是服务层生成的 UUID 文本，主键约束保证同一 ID 无法新增第二次。
 
@@ -40,7 +42,7 @@ CREATE TABLE IF NOT EXISTS schedules (
     id    TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     date  TEXT NOT NULL,
-    time  TEXT NOT NULL,
+    time  TEXT NOT NULL,  -- HH:MM；空串表示全天
     notes TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_schedules_date ON schedules(date);
@@ -58,7 +60,9 @@ CREATE INDEX IF NOT EXISTS idx_schedules_date ON schedules(date);
 | --- | --- | --- |
 | `add` | `add(schedule) -> None` | 新增；ID 已存在时抛 `DuplicateScheduleError`，不覆盖 |
 | `get` | `get(schedule_id) -> Schedule \| None` | 按 ID 查询；不存在返回 `None` |
-| `list_by_date` | `list_by_date(day) -> list[Schedule]` | 返回当天全部日程，按 `time`、`id` 升序 |
+| `list_by_date` | `list_by_date(day) -> list[Schedule]` | 返回当天全部日程，全天在前，再按 `time`、`id` 升序 |
+| `count_by_date` | `count_by_date(start, end) -> dict[date, int]` | 闭区间内每个有日程的日期及条数，供日历标记与徽标 |
+| `search_schedules` | `search_schedules(text) -> list[Schedule]` | 标题或备注包含匹配；空查询返回空列表 |
 | `update` | `update(schedule) -> bool` | 更新；找不到记录返回 `False` |
 | `delete` | `delete(schedule_id) -> bool` | 删除；找不到记录返回 `False` |
 

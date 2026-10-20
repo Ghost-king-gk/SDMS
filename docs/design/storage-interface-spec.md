@@ -13,7 +13,7 @@
 > 替身上：退出即丢，持久化（V-14）必然验不过。这份规格单的目的就是把
 > "照着填"的成本降到最低——每个条目都来自一条已运行的测试，不是口头约定。
 
-## 1. 接口签名（四个方法）
+## 1. 接口签名（六个方法）
 
 界面只通过 `ui/ports.py` 的 `ScheduleServicePort` 协议与服务层交互。
 签名如下（Python 类型标注即契约）：
@@ -41,6 +41,10 @@ class ScheduleServicePort(Protocol):
 
     def delete_schedule(self, schedule_id: str) -> None: ...
 
+    def count_by_date(self, start: dt.date, end: dt.date) -> dict[dt.date, int]: ...
+
+    def search_schedules(self, text: str) -> list[ScheduleLike]: ...
+
 
 class ScheduleLike(Protocol):
     @property
@@ -50,7 +54,7 @@ class ScheduleLike(Protocol):
     @property
     def date(self) -> dt.date: ...
     @property
-    def time(self) -> dt.time: ...
+    def time(self) -> dt.time | None: ...
     @property
     def notes(self) -> str: ...
 ```
@@ -73,7 +77,7 @@ class ScheduleLike(Protocol):
 | --- | --- | --- |
 | L1 | 只返回 `day` 当天的记录 | 不过滤相邻日期 |
 | L2 | 无记录时返回**空列表**，不抛异常 | 界面据此显示空状态（V-06） |
-| L3 | 按 `(时间, id)` 升序排列 | `presenters.to_rows` 明确不排序，界面只照抄顺序；`id` 作为次级键保证同样输入永远同样顺序 |
+| L3 | 全天日程排最前，再按 `(时间, id)` 升序 | `presenters.to_rows` 明确不排序，界面只照抄顺序；`time` 为 `None` 表示全天，`id` 作为次级键保证同样输入永远同样顺序 |
 | L4 | 同一天多条记录全部返回 | 不折叠、不去重 |
 
 ### 2.2 create_schedule
@@ -84,7 +88,7 @@ class ScheduleLike(Protocol):
 | C2 | 保存的标题是去空白后的值 | `"  带空格  "` 存为 `"带空格"` |
 | C3 | 日期宽容解析见第 3 节 | `2026-10-15`、`2026/10/15`、`2026.10.15`、`2026年10月15日` 等价（T-02 暂定范围） |
 | C4 | 不存在的日期必须拒绝 | `2026-02-30` 抛 `ValidationError`，消息里出现"真实存在"字样 |
-| C5 | 时间接受 `H:MM` 与 `HH:MM` | `9:05` 与 `09:05` 等价；`25:00`、`09:60` 拒绝 |
+| C5 | 时间接受 `H:MM` 与 `HH:MM`；留空表示全天 | `9:05` 与 `09:05` 等价；`25:00`、`09:60` 拒绝；空串存为 `time=None` |
 | C6 | 备注允许为空 | 空串是合法值，不转 None |
 | C7 | 长度上限：标题 100、备注 500 字符 | 超限抛 `ValidationError`（T-04 暂定值） |
 | C8 | 错误消息要回显用户原话 | 如"日期「明天」无法识别"，否则用户不知道该改哪一处（V-16 的预期文案） |
@@ -108,6 +112,15 @@ class ScheduleLike(Protocol):
 | D1 | 成功删除后返回 None | 界面不关心返回内容 |
 | D2 | id 不存在时抛 `ScheduleNotFound` | 不要静默成功——重复删除必须让界面能提示（V-13） |
 | D3 | 删除后立即可在 `list_schedules` 中体现 | 界面删除后刷新（V-12） |
+
+### 2.5 search_schedules
+
+| # | 规则 | 说明 |
+| --- | --- | --- |
+| S1 | 标题或备注任一包含查询串即命中 | 大小写按 SQLite `LIKE` 的默认行为，中文按字面匹配 |
+| S2 | `%`、`_`、`\` 按字面量搜索 | SQL 使用 `ESCAPE '\'`，用户输入先转义 |
+| S3 | 空查询（含全空白）返回空列表 | 不返回全表，也不报错 |
+| S4 | 排序为日期、全天在前、时间、id | 跨日期搜索时日期升序，便于直接展示 |
 
 ## 3. 宽容解析规则（T-02 暂定值）
 
@@ -158,7 +171,7 @@ CREATE TABLE IF NOT EXISTS schedules (
     id     TEXT PRIMARY KEY,          -- uuid4 字符串，与替身一致
     title  TEXT NOT NULL,
     date   TEXT NOT NULL,             -- ISO 格式 YYYY-MM-DD，便于按天查询
-    time   TEXT NOT NULL,             -- HH:MM
+    time   TEXT NOT NULL,             -- HH:MM；空串表示全天（哨兵）
     notes  TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_schedules_date ON schedules(date);
@@ -173,9 +186,17 @@ CREATE INDEX IF NOT EXISTS idx_schedules_date ON schedules(date);
 3. **首次使用时建表**（`CREATE TABLE IF NOT EXISTS`），不需要迁移框架；
 4. **数据库文件位置**不依赖运行时当前工作目录（T-03 暂定：
    跨平台用户数据目录下 `sdms/schedules.db`；测试注入临时路径）；
-5. **排序在 SQL 里做**：`ORDER BY time, id`，与 L3 一致；
+5. **排序在 SQL 里做**：全天在前，再 `ORDER BY time, id`，与 L3 一致；
+   可用 `ORDER BY CASE WHEN time = '' THEN 0 ELSE 1 END, time, id`；
 6. **`list_schedules` 的日期参数是 `dt.date` 对象**，在仓储层转 ISO 字符串，
-   不要把格式化责任推回界面。
+   不要把格式化责任推回界面；
+7. **全天日程的存储**：`time` 列保持 `TEXT NOT NULL`，用**空串**表示 `time=None`，
+   读出空串还原为 `None`；不要改 schema 版本或做迁移，旧库可直接继续使用；
+8. **`count_by_date(start, end)`**：闭区间，`SELECT date, COUNT(*) ... WHERE date >= ? AND date <= ? GROUP BY date`，
+   返回 `dict[dt.date, int]`；键供日历标记、值供当天条数徽标；
+9. **`search_schedules(text)`**：标题或备注包含匹配，SQL 用 `LIKE ? ESCAPE '\'`；
+   先把用户输入的 `\`、`%`、`_` 转义，再拼 `%...%`；空查询返回空列表；
+   排序为 `date, 全天在前, time, id`。
 
 **`V-14` 持久化验收（这条现在必然验不过，等你）：**
 

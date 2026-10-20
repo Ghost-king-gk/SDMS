@@ -87,7 +87,12 @@ def test_parse_time_rejects_out_of_range(text: str) -> None:
     assert "真实存在" in message
 
 
-@pytest.mark.parametrize("text", ["9:5", "0930", "上午九点", "09:05:30", ""])
+@pytest.mark.parametrize("text", ["", "   ", "\t\n"])
+def test_parse_time_blank_means_all_day(text: str) -> None:
+    assert parse_time(text) is None
+
+
+@pytest.mark.parametrize("text", ["9:5", "0930", "上午九点", "09:05:30"])
 def test_parse_time_rejects_unrecognized(text: str) -> None:
     with pytest.raises(ValidationError) as excinfo:
         parse_time(text)
@@ -136,6 +141,11 @@ def test_notes_length_boundary_counts_characters() -> None:
 def test_validate_returns_clean_values() -> None:
     result = validate("  写周报 ", "2026/10/15", "9:05", "  备注 ")
     assert result == ("写周报", date(2026, 10, 15), time(9, 5), "备注")
+
+
+def test_validate_blank_time_returns_none_for_all_day() -> None:
+    result = validate("全天的事", "2026-10-15", "   ", "")
+    assert result == ("全天的事", date(2026, 10, 15), None, "")
 
 
 def test_validate_reports_title_before_date() -> None:
