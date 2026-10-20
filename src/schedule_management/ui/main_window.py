@@ -141,6 +141,7 @@ class MainWindow(QMainWindow):
     def _wire_table(self) -> None:
         self._table.itemSelectionChanged.connect(self._on_row_selected)
         self._calendar.day_picked.connect(self._on_day_picked)
+        self._calendar.day_activated.connect(self._on_day_activated)
 
     # --------------------------------------------------- MainViewPort 实现
 
@@ -230,6 +231,12 @@ class MainWindow(QMainWindow):
 
     def _on_day_picked(self, day: dt.date) -> None:
         self._controller.select_day(day)
+
+    def _on_day_activated(self, day: dt.date) -> None:
+        """双击日历（或选中后按 Enter）：先切到该日期，再打开预填日期的表单。"""
+        if self._controller.current_day != day:
+            self._controller.select_day(day)
+        self._controller.request_create_for_day(day)
 
     def _selected_row_id(self) -> str | None:
         row = self._table.currentRow()

@@ -49,11 +49,16 @@ class CalendarPanel(QWidget):
     `day_picked` 只在用户**点了某一天**时发出，翻月不会触发——
     翻月只是看日历，不该顺手把列表查一遍。
 
+    `day_activated` 在用户**双击某一天**、或选中某天后按 Enter 时发出
+    （Qt 的 `activated` 信号）。它不改变 `day_picked` 的语义：单击仍然只做筛选，
+    只有明确“打开这一天”的动作才走激活路径。
+
     `today` 是注入的“今天”：默认取系统日期，截图脚本可以把它固定成某一天，
     「回到今天」才不会跳回真实当天。
     """
 
     day_picked = Signal(object)
+    day_activated = Signal(object)
 
     def __init__(
         self,
@@ -84,6 +89,7 @@ class CalendarPanel(QWidget):
         layout.addLayout(button_row)
 
         self._calendar.clicked.connect(self._emit_clicked)
+        self._calendar.activated.connect(self._emit_activated)
         self._today_button.clicked.connect(self.go_today)
 
     # ------------------------------------------------------------------ 对外
@@ -123,6 +129,10 @@ class CalendarPanel(QWidget):
 
     def _emit_clicked(self, day: QDate) -> None:
         self.day_picked.emit(_to_date(day))
+
+    def _emit_activated(self, day: QDate) -> None:
+        """双击日期或选中后按 Enter：交给窗口去打开预填日期的表单。"""
+        self.day_activated.emit(_to_date(day))
 
 
 __all__ = ["CalendarPanel"]

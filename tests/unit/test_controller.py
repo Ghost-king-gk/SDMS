@@ -235,6 +235,26 @@ def test_cancelled_form_does_not_touch_service() -> None:
     assert view.last_status == "已取消，没有做任何改动"
 
 
+def test_create_for_day_prefills_date_and_forwards_it_verbatim() -> None:
+    """双击日历某天：表单预填该日期，其余字段留空；保存时日期文本原样交给后端。"""
+    draft = a_draft(date_text="2026-10-15")
+    controller, service, view = build_controller(view=FakeMainView(form_results=(draft,)))
+    controller.start()
+
+    controller.request_create_for_day(TODAY)
+
+    request = view.form_requests[0]
+    assert request.mode == "create"
+    assert request.heading == "新增日程"
+    assert request.initial is not None
+    assert request.initial.date_text == "2026-10-15"
+    assert request.initial.title == ""
+    assert request.initial.time_text == ""
+    assert request.initial.notes == ""
+    assert service.calls_of("create") == [("create", "买牛奶", "2026-10-15", "09:30", "")]
+    assert view.last_status == "已新增「买牛奶」"
+
+
 # --------------------------------------------------------------------- 修改与查看
 
 

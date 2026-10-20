@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](https://www.python.org/)
 [![PySide6](https://img.shields.io/badge/PySide6-6.12-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)]()
-[![Tests](https://img.shields.io/badge/Tests-238%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-239%20passed-brightgreen.svg)]()
 [![License](https://img.shields.io/badge/License-Course%20Project-lightgrey.svg)]()
 
 </div>
@@ -24,11 +24,12 @@
 
 - 🗓️ **日程管理**：新增、查看、修改、删除，按选中日期展示当天全部日程；
 - 📅 **日历筛选**：左侧月历选择日期，右侧列表实时刷新；
+- 🖱️ **双击日历新增**：双击某个日期直接打开「新增日程」表单，日期自动预填；
 - ✍️ **宽容输入**：`2026/10/15`、`2026.10.15`、`2026年10月15日`、`9:05` 等写法由服务层统一解析；
 - 💾 **本地持久化**：SQLite 存储，重启程序后数据仍在；
 - 🛡️ **友好错误提示**：区分输入错误、记录不存在、重复 ID 与存储故障，不向用户泄露堆栈；
 - 🧱 **分层架构**：`ui → application → domain`，`infrastructure` 实现仓储契约，`composition.py` 负责装配；
-- ✅ **自动化测试**：238 条测试覆盖交互规则、解析、CRUD、契约、SQLite 集成与入口装配。
+- ✅ **自动化测试**：239 条测试覆盖交互规则、解析、CRUD、契约、SQLite 集成与入口装配。
 
 ## 🚀 快速开始
 
@@ -119,7 +120,7 @@ uv run python -m compileall src
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
-uv run pytest -q                  # 238 passed
+uv run pytest -q                  # 239 passed
 ```
 
 详细的环境配置、Windows/Linux 差异、测试明细与验证结果见 [`docs/development.md`](docs/development.md)。
