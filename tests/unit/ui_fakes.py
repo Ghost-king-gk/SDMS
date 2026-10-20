@@ -93,6 +93,7 @@ class FakeScheduleService:
         items: tuple[StubSchedule, ...] = (),
         *,
         list_error: Exception | None = None,
+        count_error: Exception | None = None,
         create_error: Exception | None = None,
         update_error: Exception | None = None,
         delete_error: Exception | None = None,
@@ -100,6 +101,7 @@ class FakeScheduleService:
         self._items: list[StubSchedule] = list(items)
         self._errors = {
             "list": list_error,
+            "count": count_error,
             "create": create_error,
             "update": update_error,
             "delete": delete_error,
@@ -134,6 +136,8 @@ class FakeScheduleService:
 
     def count_by_date(self, start: dt.date, end: dt.date) -> dict[dt.date, int]:
         self.calls.append(("count_by_date", start, end))
+        if self._errors["count"] is not None:
+            raise self._errors["count"]
         counts: dict[dt.date, int] = {}
         for item in self._items:
             if start <= item.date <= end:
@@ -217,6 +221,7 @@ class FakeMainView:
         self.confirm_answer = confirm_answer
         self.rows: list[tuple[ScheduleRow, ...]] = []
         self.counts: list[str] = []
+        self.month_counts: list[dict[dt.date, int]] = []
         self.selections: list[str] = []
         self.statuses: list[str] = []
         self.infos: list[str] = []
@@ -247,6 +252,9 @@ class FakeMainView:
 
     def show_count(self, text: str) -> None:
         self.counts.append(text)
+
+    def show_month_counts(self, counts: dict[dt.date, int]) -> None:
+        self.month_counts.append(dict(counts))
 
     def show_selection(self, text: str) -> None:
         self.selections.append(text)

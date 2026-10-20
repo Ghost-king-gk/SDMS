@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import calendar
 import datetime as dt
 import logging
 from dataclasses import dataclass, replace
@@ -105,6 +106,35 @@ class ScheduleController:
         self._view.show_count(presenters.count_text(len(rows)))
         self._sync_selection()
         self._view.show_status(presenters.ready_text(len(rows)))
+        # 列表成功之后再补日历标记：存储只允许读列表、读不了月度汇总时，
+        # 列表仍然是成功的，不该被一条辅助查询拖成失败。
+        self.load_month_counts(day.year, day.month)
+        return True
+
+    def load_month_counts(self, year: int, month: int) -> bool:
+        """把这个月「哪天有几条」交给界面标记日历。
+
+        区间是**闭区间**的当月首末日，与 `ScheduleUseCases.count_by_date` 的
+        契约一致。查询失败只记日志、返回 `False`，**不弹错误框**：翻月是浏览
+        动作，存储一时不可用不该把人堵在日历上；返回值留给需要区分的调用方。
+
+        参数不合法（例如 `month=13`）同样只记日志：这是调用方的编程错误，
+        不该变成一条用户看不懂的提示。
+        """
+        try:
+            first = dt.date(year, month, 1)
+            last = dt.date(year, month, calendar.monthrange(year, month)[1])
+        except ValueError:
+            _LOGGER.warning("无法计算 %r 年 %r 月的日期区间，已跳过日历标记", year, month)
+            return False
+
+        try:
+            counts = self._service.count_by_date(first, last)
+        except Exception as exc:  # 辅助查询失败不打断浏览，也不弹框
+            _LOGGER.warning("加载 %s 的日程标记失败：%s", (first, last), exc)
+            return False
+
+        self._view.show_month_counts(dict(counts))
         return True
 
     def select_row(self, schedule_id: str | None) -> None:

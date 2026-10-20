@@ -13,7 +13,9 @@ P10 把真正的 Qt 窗口写了进来，守卫因此按**角色**而不是按�
 
 - 与呈现无关的那几个模块（下表 `VIEW_AGNOSTIC_MODULES`）连 GUI 框架都不许碰；
 - 窗口适配器天然需要 Qt，允许 `PySide6`，但仍然是界面，**不许碰数据库**；
-- 任何 ui 模块都必须在这两张名单里，新增一个没有被归类的模块会让测试失败——
+- 主题资源（`STYLE_MODULES`）只有 QSS 文本与色值，刻意不 import `PySide6`——
+  这样样式能在没有 Qt 的环境里被直接断言，窗口模块只负责套用；
+- 任何 ui 模块都必须在这三张名单里，新增一个没有被归类的模块会让测试失败——
   宁可让人多登记一行，也不让"不知道归哪类"的模块悄悄溜过守卫。
 
 `sqlite3` 是全包红线：界面层不许碰存储，这条是分工的红线而不是风格偏好，
@@ -43,11 +45,14 @@ WINDOW_MODULES = frozenset(
     {"app.py", "main_window.py", "calendar_view.py", "date_picker.py", "schedule_form.py"}
 )
 
+#: 主题资源：QSS 文本与色板，只被窗口模块套用或取色，自己不许 import Qt。
+STYLE_MODULES = frozenset({"theme.py"})
+
 GUI_FRAMEWORKS = ("PySide6", "tkinter")
 STORAGE_MODULES = ("sqlite3",)
 
-#: 两张名单的并集，用于"是否都登记了"那条检查。
-CLASSIFIED_MODULES = VIEW_AGNOSTIC_MODULES | WINDOW_MODULES
+#: 三张名单的并集，用于"是否都登记了"那条检查。
+CLASSIFIED_MODULES = VIEW_AGNOSTIC_MODULES | WINDOW_MODULES | STYLE_MODULES
 
 ALL_UI_MODULES = sorted(UI_PACKAGE.glob("*.py"))
 
@@ -76,7 +81,8 @@ def test_every_ui_module_is_explicitly_classified() -> None:
     unclassified = sorted(p.name for p in ALL_UI_MODULES if p.name not in CLASSIFIED_MODULES)
     assert not unclassified, (
         f"这些模块没有被归类，守卫检查不到它们：{unclassified}。"
-        f"请把它们加进 VIEW_AGNOSTIC_MODULES（与呈现无关）或 WINDOW_MODULES（Qt 适配器）。"
+        f"请把它们加进 VIEW_AGNOSTIC_MODULES（与呈现无关）、WINDOW_MODULES（Qt 适配器）"
+        f"或 STYLE_MODULES（主题资源）。"
     )
 
 
@@ -120,6 +126,21 @@ def test_window_adapter_declares_its_qt_dependency(module_name: str) -> None:
     assert module_name not in VIEW_AGNOSTIC_MODULES, (
         f"{module_name} 同时出现在两张名单里，守卫会自相矛盾"
     )
+
+
+@pytest.mark.parametrize("module_name", sorted(STYLE_MODULES))
+def test_style_module_stays_qt_free(module_name: str) -> None:
+    """主题资源只放字符串：能 import Qt 就会有人顺手在里面创建控件。"""
+    module_path = UI_PACKAGE / module_name
+    assert module_path.exists(), f"{module_name} 不存在，名单本身写错了"
+
+    imported = imported_toplevel_names(module_path.read_text(encoding="utf-8"))
+    for forbidden in GUI_FRAMEWORKS + STORAGE_MODULES:
+        assert forbidden not in imported, (
+            f"{module_name} 不应依赖 {forbidden}：主题是纯文本与色值，"
+            "套用它的窗口模块才允许 import PySide6"
+        )
+    assert "schedule_management" not in imported
 
 
 def test_ui_core_modules_import_cleanly() -> None:
