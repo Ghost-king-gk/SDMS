@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
 from .date_picker import pick_date
 from .view_models import FormRequest, ScheduleDraft
 
-_FIELD_LABELS = ("标题", "日期", "时间", "备注")
+_FIELD_LABELS = ("标题", "日期", "时间（可留空，表示全天）", "备注")
 
 
 class ScheduleForm(QDialog):
@@ -49,10 +49,11 @@ class ScheduleForm(QDialog):
 
         self._title.setPlaceholderText("必填")
         self._date.setPlaceholderText("YYYY-MM-DD，也可以写 2026/10/15")
-        self._time.setPlaceholderText("HH:MM")
+        self._time.setPlaceholderText("留空 = 全天")
         self._notes.setPlaceholderText("选填")
 
         self._pick_button = QPushButton("选择", self)
+        self._pick_button.setObjectName("PickButton")
         date_row = QHBoxLayout()
         date_row.addWidget(self._date, 1)
         date_row.addWidget(self._pick_button)

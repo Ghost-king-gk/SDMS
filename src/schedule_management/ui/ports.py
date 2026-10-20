@@ -51,6 +51,13 @@ class MainViewPort(Protocol):
     def show_count(self, text: str) -> None:
         """显示条数文案（② 区）。"""
 
+    def show_month_counts(self, counts: dict[dt.date, int]) -> None:
+        """用「当月每个有日程的日期 → 条数」标记日历（① 区）。
+
+        `counts` 只包含有日程的日期；空字典表示这个月一条都没有，界面应当
+        把所有旧标记清掉（今天的高亮不属于标记，由界面自己维护）。
+        """
+
     def show_selection(self, text: str) -> None:
         """显示当前选中项文案（⑤ 区右侧）。"""
 

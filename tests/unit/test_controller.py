@@ -97,6 +97,65 @@ def test_switching_day_reloads_and_clears_selection() -> None:
     assert service.calls_of("list")[-1] == ("list", TOMORROW)
 
 
+def test_refresh_reports_month_counts_to_view() -> None:
+    """刷新列表后顺手把当月标记交给界面：日历靠它画底色与徽标。"""
+    controller, service, view = build_controller(items=(ITEM_TODAY, ITEM_TOMORROW))
+
+    controller.start()
+
+    assert service.calls_of("count_by_date") == [
+        ("count_by_date", dt.date(2026, 10, 1), dt.date(2026, 10, 31))
+    ], "区间必须是当月首末日（闭区间），不能只查当天"
+    assert view.month_counts[-1] == {TODAY: 1, TOMORROW: 1}
+
+
+def test_load_month_counts_uses_closed_interval_and_reports_to_view() -> None:
+    """闰年二月也要算准：2028-02 的末日是 29 号。"""
+    controller, service, view = build_controller(items=())
+
+    assert controller.load_month_counts(2028, 2) is True
+
+    assert service.calls_of("count_by_date")[-1] == (
+        "count_by_date",
+        dt.date(2028, 2, 1),
+        dt.date(2028, 2, 29),
+    )
+    assert view.month_counts[-1] == {}, "空月也要回一个空字典，界面才能清掉旧标记"
+
+
+def test_load_month_counts_failure_returns_false_without_dialog() -> None:
+    """翻月遇到存储故障：只记日志，不弹框，也不假装给了标记。"""
+    service = FakeScheduleService(count_error=StorageError("数据库忙"))
+    controller, _service, view = build_controller(service)
+
+    assert controller.load_month_counts(2026, 10) is False
+
+    assert view.errors == [], "翻月不该被存储故障打断"
+    assert view.month_counts == []
+
+
+def test_count_failure_does_not_turn_list_refresh_into_failure() -> None:
+    """月度标记是辅助信息：查不到也不能把成功的列表刷新拖成失败。"""
+    service = FakeScheduleService((ITEM_TODAY,), count_error=StorageError("汇总查询失败"))
+    controller, _service, view = build_controller(service)
+
+    controller.start()
+
+    assert [row.schedule_id for row in view.last_rows] == ["id-1"]
+    assert view.errors == [], "列表成功时不弹任何错误框"
+    assert view.month_counts == []
+    assert controller.refresh() is True
+
+
+def test_load_month_counts_rejects_invalid_month() -> None:
+    controller, service, view = build_controller()
+
+    assert controller.load_month_counts(2026, 13) is False
+
+    assert service.calls_of("count_by_date") == [], "参数不合法时不该去查库"
+    assert view.errors == []
+
+
 def test_rows_property_is_a_read_only_snapshot() -> None:
     controller, _service, _view = build_controller()
     controller.start()
@@ -113,10 +172,11 @@ def test_delete_without_selection_never_calls_service() -> None:
     """V-10：未选中点删除，整条链路零次服务调用。"""
     controller, service, view = build_controller()
     controller.start()
+    calls_before = service.call_count
 
     controller.request_delete()
 
-    assert service.call_count == len(service.calls_of("list")), "除了初始查询不应有任何调用"
+    assert service.call_count == calls_before, "除了启动时的查询不应有任何调用"
     assert service.calls_of("delete") == []
     assert view.errors == [], "未选中是状态提醒，不是错误"
     assert len(view.infos) == 1 and "选中" in view.infos[0]
@@ -228,11 +288,11 @@ def test_failed_save_reopens_form_with_previous_values() -> None:
 def test_cancelled_form_does_not_touch_service() -> None:
     controller, service, view = build_controller(view=FakeMainView(form_results=(None,)))
     controller.start()
-    list_calls = len(service.calls_of("list"))
+    calls_before = service.call_count
 
     controller.request_create()
 
-    assert service.call_count == list_calls, "取消表单不能产生任何写入调用"
+    assert service.call_count == calls_before, "取消表单不能产生任何写入调用"
     assert view.last_status == "已取消，没有做任何改动"
 
 
@@ -328,11 +388,11 @@ def test_view_detail_uses_rows_without_extra_service_call() -> None:
     controller, service, view = build_controller()
     controller.start()
     controller.select_row("id-2")
-    list_calls = len(service.calls_of("list"))
+    calls_before = service.call_count
 
     controller.request_view()
 
-    assert service.call_count == list_calls, "列表刚查过，详情不必再查一次"
+    assert service.call_count == calls_before, "列表刚查过，详情不必再查一次"
     assert [row.schedule_id for row in view.details] == ["id-2"]
 
 
