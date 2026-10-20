@@ -77,6 +77,14 @@ class MainViewPort(Protocol):
     def show_status(self, text: str) -> None:
         """显示最近一次操作的结果（⑤ 区）。"""
 
+    def show_undo_available(self, available: bool) -> None:
+        """显示或隐藏「撤销删除」入口。
+
+        `True` 表示最近一次删除可以被撤销；撤销成功、没有可撤销的删除时
+        传 `False`。窗口只负责切换入口的可见性，是否真的能撤销由 controller
+        的快照决定。
+        """
+
     def show_info(self, message: str) -> None:
         """非错误的提醒，例如"请先选择一条日程"。"""
 

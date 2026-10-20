@@ -199,6 +199,19 @@ def deleted_text(title: str) -> str:
     return f"已删除「{title}」"
 
 
+def undo_done_text(title: str) -> str:
+    """撤销删除成功后的状态栏文案；`title` 用后端确认的标题。"""
+    return f"已撤销删除「{title}」"
+
+
+def undo_unavailable_text() -> str:
+    """没有可撤销的删除时的提醒。
+
+    这不是错误：可能是撤销已经完成，也可能是这次运行里还没有删除过。
+    """
+    return "没有可以撤销的删除。"
+
+
 def no_selection_text() -> str:
     """没有选中就点修改/删除时的提示。
 

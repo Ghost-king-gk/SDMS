@@ -16,6 +16,7 @@ import logging
 
 import pytest
 
+from schedule_management.ui import presenters
 from schedule_management.ui.controller import ScheduleController
 from schedule_management.ui.view_models import ScheduleDraft
 from tests.unit.ui_fakes import (
@@ -240,6 +241,210 @@ def test_stale_selection_is_reported_without_calling_service() -> None:
     controller.request_delete()
 
     assert service.calls_of("delete") == []
+
+
+# ----------------------------------------------------------------- 复制日程
+
+
+def test_duplicate_without_selection_never_opens_form_or_calls_service() -> None:
+    controller, service, view = build_controller()
+    controller.start()
+    calls_before = service.call_count
+
+    controller.request_duplicate()
+
+    assert view.form_requests == []
+    assert service.call_count == calls_before
+    assert view.infos == [presenters.no_selection_text()]
+
+
+def test_duplicate_prefills_from_row_and_creates_a_new_record() -> None:
+    """复制走 create：标题/日期/时间/备注原样预填，但绝不带原 id。"""
+    draft = a_draft(title="写周报", date_text="2026-10-15", time_text="09:30", notes="")
+    controller, service, view = build_controller(
+        items=(ITEM_TODAY,), view=FakeMainView(form_results=(draft,))
+    )
+    controller.start()
+    controller.select_row("id-1")
+
+    controller.request_duplicate()
+
+    first = view.last_form
+    assert first is not None
+    assert first.mode == "create", "复制必须新增记录，不能改原记录"
+    assert first.heading == "复制日程"
+    assert first.initial == ScheduleDraft(
+        title="写周报", date_text="2026-10-15", time_text="09:30", notes=""
+    )
+    assert service.calls_of("create") == [("create", "写周报", "2026-10-15", "09:30", "")]
+    assert service.calls_of("update") == [], "复制不是修改"
+    assert len(service.calls_of("create")) == 1
+    assert len(view.last_rows) == 2, "副本与原记录同时出现在当天列表"
+    assert {row.schedule_id for row in view.last_rows} != {"id-1"}
+    assert view.last_status == "已新增「写周报」"
+
+
+def test_duplicate_all_day_row_uses_empty_time() -> None:
+    """“全天”只是展示文本，复制时提交的必须是空时间。"""
+    draft = a_draft(title="休息", date_text="2026-10-15", time_text="")
+    controller, service, view = build_controller(
+        items=(ITEM_ALL_DAY,), view=FakeMainView(form_results=(draft,))
+    )
+    controller.start()
+    controller.select_row("id-4")
+
+    controller.request_duplicate()
+
+    first = view.last_form
+    assert first is not None and first.initial is not None
+    assert first.initial.time_text == ""
+    assert service.calls_of("create") == [("create", "休息", "2026-10-15", "", "")]
+    assert [row.time_text for row in view.last_rows] == ["全天", "全天"]
+
+
+def test_duplicate_in_search_uses_row_date_not_current_day() -> None:
+    draft = a_draft(title="体检", date_text="2026-10-16", time_text="08:00")
+    controller, service, view = build_controller(
+        items=(ITEM_TODAY, ITEM_TOMORROW), view=FakeMainView(form_results=(draft,))
+    )
+    controller.start()
+    controller.set_search("体检")
+    controller.select_row("id-3")
+
+    controller.request_duplicate()
+
+    first = view.last_form
+    assert first is not None and first.initial is not None
+    assert first.initial.date_text == "2026-10-16", "必须用行上的日期，而不是当前筛选日期"
+    assert service.calls_of("create")[0][2] == "2026-10-16"
+
+
+# ----------------------------------------------------------------- 撤销删除
+
+
+def test_delete_success_offers_undo_and_undo_recreates_with_new_id() -> None:
+    controller, service, view = build_controller(items=(ITEM_TODAY,))
+    controller.start()
+    controller.select_row("id-1")
+
+    controller.request_delete()
+
+    assert view.undo_available == [True], "删除成功后要显示撤销入口"
+    assert [item.id for item in service.items] == []
+
+    controller.undo_delete()
+
+    assert service.calls_of("create") == [("create", "写周报", "2026-10-15", "09:30", "")]
+    assert view.undo_available == [True, False], "撤销成功后入口要收起"
+    assert view.last_status == "已撤销删除「写周报」"
+    restored = next(iter(service.items))
+    assert restored.id != "id-1", "撤销是新记录，不恢复原 id"
+    assert restored.title == "写周报"
+    assert restored.time == dt.time(9, 30)
+    assert [row.title_text for row in view.last_rows] == ["写周报"]
+
+    controller.undo_delete()
+    assert len(service.calls_of("create")) == 1, "快照已清空，再次撤销不再写库"
+    assert view.infos[-1] == "没有可以撤销的删除。"
+
+
+def test_undo_restores_all_day_with_empty_time() -> None:
+    controller, service, view = build_controller(items=(ITEM_ALL_DAY,))
+    controller.start()
+    controller.select_row("id-4")
+    controller.request_delete()
+
+    controller.undo_delete()
+
+    assert service.calls_of("create") == [("create", "休息", "2026-10-15", "", "")]
+    assert view.last_rows[0].time_text == "全天"
+
+
+def test_undo_without_snapshot_only_informs_and_never_calls_service() -> None:
+    controller, service, view = build_controller()
+    controller.start()
+
+    controller.undo_delete()
+
+    assert service.calls_of("create") == []
+    assert view.errors == [], "没有可撤销的删除是提醒，不是错误"
+    assert view.infos == ["没有可以撤销的删除。"]
+
+
+def test_cancelled_delete_does_not_offer_undo() -> None:
+    controller, service, view = build_controller(
+        view=FakeMainView(confirm_answer=False), items=(ITEM_TODAY,)
+    )
+    controller.start()
+    controller.select_row("id-1")
+
+    controller.request_delete()
+
+    assert view.undo_available == [], "取消删除不能点亮撤销入口"
+    assert service.calls_of("delete") == []
+
+    controller.undo_delete()
+
+    assert service.calls_of("create") == [], "没有删除过就不该有可撤销的快照"
+    assert view.infos[-1] == "没有可以撤销的删除。"
+
+
+def test_failed_delete_does_not_offer_undo() -> None:
+    service = FakeScheduleService((ITEM_TODAY,), delete_error=ScheduleNotFound("日程已被删除"))
+    controller, service, view = build_controller(service)
+    controller.start()
+    controller.select_row("id-1")
+
+    controller.request_delete()
+
+    assert view.undo_available == [], "删除失败时记录还在，不能提供撤销"
+    assert service.calls_of("delete") == [("delete", "id-1")]
+
+    controller.undo_delete()
+
+    assert service.calls_of("create") == []
+
+
+def test_undo_failure_keeps_snapshot_for_retry() -> None:
+    controller, service, view = build_controller(items=(ITEM_TODAY,))
+    controller.start()
+    controller.select_row("id-1")
+    controller.request_delete()
+    service.fail_next("create", StorageError("磁盘已满"))
+
+    controller.undo_delete()
+
+    headline, message = view.errors[-1]
+    assert headline == "数据没能写入磁盘"
+    assert "磁盘已满" in message
+    assert view.undo_available == [True], "失败后撤销入口不能收起"
+    assert view.last_status == "已删除「写周报」", "失败不能对外宣称已撤销"
+
+    service.fail_next("create", None)
+    controller.undo_delete()
+
+    assert len(service.calls_of("create")) == 2, "失败后可以再试一次"
+    assert view.undo_available == [True, False]
+    assert view.last_status == "已撤销删除「写周报」"
+    assert [row.title_text for row in view.last_rows] == ["写周报"]
+
+
+def test_new_delete_overwrites_previous_snapshot() -> None:
+    """只保留最近一次删除：撤销不会把两条都重建回来。"""
+    controller, service, view = build_controller(items=(ITEM_TODAY, ITEM_LATER))
+    controller.start()
+    controller.select_row("id-1")
+    controller.request_delete()
+    controller.select_row("id-2")
+    controller.request_delete()
+
+    assert view.undo_available == [True, True]
+
+    controller.undo_delete()
+
+    assert service.calls_of("create") == [("create", "开组会", "2026-10-15", "15:00", "带上机")]
+    assert view.last_status == "已撤销删除「开组会」"
+    assert [item.title for item in service.items] == ["开组会"], "写周报不应被一起恢复"
 
 
 # ------------------------------------------------------------- 日期：界面不拦截

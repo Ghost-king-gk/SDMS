@@ -192,6 +192,37 @@ QSplitter::handle:horizontal {
     width: 16px;
 }
 
+/* ---------------------------------------------------------------- 菜单 */
+QMenu {
+    background-color: $surface;
+    color: $text;
+    border: 1px solid $border;
+    border-radius: 8px;
+    padding: 4px;
+}
+
+QMenu::item {
+    background-color: transparent;
+    padding: 6px 22px 6px 14px;
+    border-radius: 6px;
+    min-width: 140px;
+}
+
+QMenu::item:selected {
+    background-color: $hover;
+    color: $primary;
+}
+
+QMenu::item:disabled {
+    color: $muted;
+}
+
+QMenu::separator {
+    height: 1px;
+    background-color: $border;
+    margin: 4px 8px;
+}
+
 /* ---------------------------------------------------------------- 表格 */
 QTableWidget {
     background-color: $surface;
@@ -377,6 +408,20 @@ QPushButton#ClearSearch {
 QPushButton#ClearSearch:hover {
     background-color: $hover;
     color: $primary;
+    border-color: $primary;
+}
+
+QPushButton#UndoButton {
+    background-color: transparent;
+    color: $primary;
+    border: 1px solid $border;
+    border-radius: 8px;
+    padding: 2px 12px;
+    font-weight: normal;
+}
+
+QPushButton#UndoButton:hover {
+    background-color: $hover;
     border-color: $primary;
 }
 

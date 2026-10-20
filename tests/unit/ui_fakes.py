@@ -235,6 +235,7 @@ class FakeMainView:
         self.month_counts: list[dict[dt.date, int]] = []
         self.selections: list[str] = []
         self.statuses: list[str] = []
+        self.undo_available: list[bool] = []
         self.infos: list[str] = []
         self.errors: list[tuple[str, str]] = []
         self.details: list[ScheduleRow] = []
@@ -281,6 +282,9 @@ class FakeMainView:
 
     def show_status(self, text: str) -> None:
         self.statuses.append(text)
+
+    def show_undo_available(self, available: bool) -> None:
+        self.undo_available.append(available)
 
     def show_info(self, message: str) -> None:
         self.infos.append(message)
