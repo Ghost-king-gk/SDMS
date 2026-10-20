@@ -22,8 +22,8 @@
 
 诚实边界（**没有假装已验**）：
 
-- V-14 持久化：替身是内存版，退出即丢，这条**在本脚本里必然验不过**，
-  要等 SQLite 存储落地（见 `docs/design/storage-interface-spec.md`）；
+- V-14 持久化：存储层落地后由 `scenario_real_service` 真验——真连接 + 真 SQLite，
+  关窗关连接重开后数据还在；本文件同时保留替身版场景做界面回归；
 - V-07 的"跨月灰显好不好看"、文字截断这类，仍然要人打开截图看一眼；
 - V-17 的平台一致性只在 Windows 上验过（Linux 不做 GUI，见 1.1 节）。
 """
@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import datetime as dt
 import sys
+import tempfile
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Final, cast
@@ -39,10 +40,11 @@ from typing import Final, cast
 from PySide6.QtCore import QDate, Qt, QTimer
 from PySide6.QtWidgets import QApplication, QDialogButtonBox, QMessageBox, QWidget
 
+from schedule_management import composition
 from schedule_management.dev_stub_service import DevStubScheduleService
 from schedule_management.ui.date_picker import DatePickerPopup
 from schedule_management.ui.main_window import MainWindow
-from schedule_management.ui.ports import ScheduleLike
+from schedule_management.ui.ports import ScheduleLike, ScheduleServicePort
 from schedule_management.ui.schedule_form import ScheduleForm
 from schedule_management.ui.view_models import FormRequest, ScheduleDraft
 
@@ -73,14 +75,15 @@ def save(pixmap: object, filename: str) -> Path:
 
 
 class RecordingService:
-    """`DevStubScheduleService` 的委托包装：行为不变，只记录调用。"""
+    """服务端口实现的委托包装：行为不变，只多记一笔调用账。
 
-    def __init__(self, inner: DevStubScheduleService) -> None:
+    替身和真服务都能包——构造时只要求满足 `ScheduleServicePort`，
+    场景代码因此不用关心背后是内存还是 SQLite。
+    """
+
+    def __init__(self, inner: ScheduleServicePort) -> None:
         self._inner = inner
         self.calls: list[str] = []
-
-    def seed_defaults(self, today: dt.date) -> None:
-        self._inner.seed_defaults(today)
 
     def list_schedules(self, day: dt.date) -> Sequence[ScheduleLike]:
         return list(self._inner.list_schedules(day))
@@ -298,6 +301,31 @@ def check_backfill_and_cancel(expected_text: str) -> Callable[[QWidget], None]:
 
 def build_window(service: RecordingService) -> MainWindow:
     return MainWindow(service=service, clock=lambda: TODAY)
+
+
+def stub_service(today: dt.date) -> RecordingService:
+    """内存替身 + 种子数据，包上记录仪（界面回归场景用）。"""
+    stub = DevStubScheduleService()
+    stub.seed_defaults(today)
+    return RecordingService(stub)
+
+
+#: 真服务场景的种子数据：与替身 `seed_defaults` 同形（3 条今天 + 相邻两天各 1）。
+_REAL_SEED: Final[tuple[tuple[int, str, str, str], ...]] = (
+    (0, "08:30", "晨读英语", "第 3 单元单词"),
+    (0, "14:00", "数据结构习题课", "带上机报告"),
+    (0, "19:30", "小组周会", "讨论接口对接"),
+    (1, "10:00", "数据库实验", ""),
+    (3, "15:00", "体育测试补测", "操场东侧集合"),
+)
+
+
+def _seed_real(service: RecordingService, today: dt.date) -> None:
+    """经**真实服务**建种子数据——走的就是界面那份宽容解析，不是后门插入。"""
+    for offset, time_text, title, notes in _REAL_SEED:
+        service.create_schedule(
+            title, (today + dt.timedelta(days=offset)).isoformat(), time_text, notes
+        )
 
 
 def run_scenario(
@@ -659,6 +687,100 @@ def scenario_date_picker(app: QApplication, service: RecordingService) -> None:
     window.close()
 
 
+def scenario_real_service(app: QApplication) -> None:
+    """真服务 + 真 SQLite 的接线验收：V-01 / V-02 / V-14 的真实版。
+
+    存储层落地前这条场景不存在（替身退出即丢，V-14 无从验起）；现在
+    `composition.connect() -> build_service()` 是真链路，重开连接即验持久化。
+    数据库放在系统临时目录，不碰用户真实日程库。
+    """
+    db_dir = Path(tempfile.gettempdir()) / "sdms-acceptance"
+    db_path = db_dir / "schedules.db"
+    db_dir.mkdir(parents=True, exist_ok=True)
+    if db_path.exists():
+        db_path.unlink()
+
+    created_title = "09:30 接线验证日程"
+
+    # 第一幕：真连接 + 真服务，空库经服务建 5 条种子，再走表单新增一条。
+    connection = composition.connect(db_path)
+    service = RecordingService(composition.build_service(connection))
+    _seed_real(service, TODAY)
+
+    window = build_window(service)
+    window.show()
+    app.processEvents()
+    check(
+        "V-01 真服务版：空库建 3 条当天种子后启动即显示",
+        window._table.rowCount() == 3,
+        f"表格行数={window._table.rowCount()}",
+    )
+
+    window = run_scenario(
+        app,
+        service,
+        [
+            fill_and_submit(
+                title=created_title,
+                date_text=TODAY.isoformat(),
+                time_text="9:30",
+                notes="真服务写入",
+            )
+        ],
+        lambda w: w._actions["create"].trigger(),
+        window=window,
+    )
+    check(
+        "V-02 真服务版：表单新增后列表立即出现该条",
+        created_title in _titles(window),
+        str(_titles(window)),
+    )
+    check(
+        "V-02 真服务版：服务确实收到一次 create 调用",
+        service.calls.count("create") == 1 + len(_REAL_SEED),
+        str(service.calls),
+    )
+    check(
+        "V-02 真服务版：状态栏提示成功且表单已关闭",
+        window._status_label.text().startswith("已新增"),
+        window._status_label.text(),
+    )
+    save(window.grab(), "main-window-real-service.png")
+
+    # 直接查库：不经界面，证明真的落盘了。
+    probe = composition.connect(db_path)
+    try:
+        rows = probe.execute(
+            "SELECT title FROM schedules WHERE date = ?", (TODAY.isoformat(),)
+        ).fetchall()
+    finally:
+        probe.close()
+    check(
+        "V-02 真服务版：直查 SQLite 当天已有该条",
+        (created_title,) in rows,
+        str(rows),
+    )
+
+    # 第二幕：关窗、关连接，再原样打开——V-14 的真身。
+    window.close()
+    connection.close()
+
+    reopened = composition.connect(db_path)
+    service2 = RecordingService(composition.build_service(reopened))
+    window2 = build_window(service2)
+    window2.show()
+    app.processEvents()
+    check(
+        "V-14 真服务版：关窗关连接重开后数据还在",
+        created_title in _titles(window2),
+        str(_titles(window2)),
+    )
+    save(window2.grab(), "main-window-real-restart.png")
+    window2.close()
+    reopened.close()
+    print(f"真服务验收数据库：{db_path}")
+
+
 def main() -> int:
     """跑一遍全部场景；返回失败条数。"""
     app = QApplication(sys.argv)
@@ -666,29 +788,25 @@ def main() -> int:
 
     scenario_visuals(app)
 
-    service = RecordingService(DevStubScheduleService())
-    service.seed_defaults(TODAY)
+    service = stub_service(TODAY)
     scenario_create(app, service)
 
-    service = RecordingService(DevStubScheduleService())
-    service.seed_defaults(TODAY)
+    service = stub_service(TODAY)
     scenario_invalid_title(app, service)
 
-    service = RecordingService(DevStubScheduleService())
-    service.seed_defaults(TODAY)
+    service = stub_service(TODAY)
     scenario_edit_keeps_id(app, service)
 
-    service = RecordingService(DevStubScheduleService())
-    service.seed_defaults(TODAY)
+    service = stub_service(TODAY)
     scenario_edit_moves_day(app, service)
 
-    service = RecordingService(DevStubScheduleService())
-    service.seed_defaults(TODAY)
+    service = stub_service(TODAY)
     scenario_delete_guards(app, service)
 
-    service = RecordingService(DevStubScheduleService())
-    service.seed_defaults(TODAY)
+    service = stub_service(TODAY)
     scenario_date_picker(app, service)
+
+    scenario_real_service(app)
 
     print(f"截图目录：{OUTPUT_DIR}")
     failed = 0

@@ -28,10 +28,14 @@ UNEXPECTED_CATEGORY = "Unexpected"
 _WEEKDAY_NAMES = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
 
 #: 已知的可解释错误 → 提示标题。键是 `error_category` 给出的**分类名**。
+#:
+#: `Duplicate` 的文案刻意不写"已经存在"：该分类只表示存储层 ID 主键冲突，
+#: 不表示同标题/同时段/同内容冲突——内容相同、ID 不同的两条日程是合法的
+#: （见 `docs/design/contracts.md` 错误类型一节）。文案不能暗示内容重复。
 _ERROR_HEADLINES = {
     "ValidationError": "无法保存",
     "ScheduleNotFound": "没有找到这条日程",
-    "Duplicate": "这条日程已经存在",
+    "Duplicate": "保存冲突",
     "StorageError": "数据没能写入磁盘",
 }
 
@@ -43,8 +47,8 @@ _ERROR_SUGGESTIONS = {
     ),
     "ScheduleNotFound": "它可能已经被删除了。点「刷新」看看最新的列表。",
     "Duplicate": (
-        "换一个时间或先刷新列表，确认是不是已经保存过。"
-        "已经填写的内容都还在，确认后可以直接再试一次。"
+        "可能是记录 ID 冲突。先点「刷新」看看最新的列表，"
+        "已经填写的内容都还在，刷新后可以直接再试一次。"
     ),
     "StorageError": "数据文件可能不可写或已损坏。已填写的内容没有丢失，处理好之后可以再试。",
 }
