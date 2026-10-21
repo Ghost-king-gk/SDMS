@@ -37,11 +37,12 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Final, cast
 
-from PySide6.QtCore import QDate, Qt, QTimer
-from PySide6.QtWidgets import QApplication, QDialogButtonBox, QMessageBox, QWidget
+from PySide6.QtCore import QDate, QSettings, Qt, QTimer
+from PySide6.QtWidgets import QApplication, QDialogButtonBox, QMessageBox, QToolBar, QWidget
 
 from schedule_management import composition
 from schedule_management.dev_stub_service import DevStubScheduleService
+from schedule_management.ui.app import _install_chinese_texts
 from schedule_management.ui.date_picker import DatePickerPopup
 from schedule_management.ui.main_window import MainWindow
 from schedule_management.ui.ports import ScheduleLike, ScheduleServicePort
@@ -108,6 +109,13 @@ class RecordingService:
     def delete_schedule(self, schedule_id: str) -> None:
         self.calls.append("delete")
         self._inner.delete_schedule(schedule_id)
+
+    def search_schedules(self, text: str) -> Sequence[ScheduleLike]:
+        return list(self._inner.search_schedules(text))
+
+    def count_by_date(self, start: dt.date, end: dt.date) -> dict[dt.date, int]:
+        """委托月度计数：不给这一层，日历上的条数徽标在截图里会一直是空的。"""
+        return dict(self._inner.count_by_date(start, end))
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +229,11 @@ def edit_title_and_submit(
 
 
 def check_prefill_and_cancel(expected_title: str) -> Callable[[QWidget], None]:
-    """保存失败后表单会带着上次的草稿重开：先确认内容还在，再取消。"""
+    """保存失败后表单留在原地并显示错误：先确认内容与错误条，再取消。
+
+    这里补一条"同一个对话框"的检查：以前失败是"弹框 → 关表单 → 重开"，
+    用户看到的是一个框闪一下；现在错误就显示在这张表单的顶部。
+    """
 
     def act(modal: QWidget) -> None:
         if not _expect(modal, ScheduleForm, "重开的表单"):
@@ -229,9 +241,16 @@ def check_prefill_and_cancel(expected_title: str) -> Callable[[QWidget], None]:
         form = cast(ScheduleForm, modal)
         actual = form._title.text()
         check(
-            "V-03 保存失败后已填内容原样保留在重新打开的表单里",
+            "V-03 保存失败后已填内容原样保留在表单里",
             actual == expected_title,
             f"title={actual!r}",
+        )
+        visible = not form._error_label.isHidden()
+        error_text = form._error_label.text()
+        check(
+            "V-03 错误就地显示在表单顶部（不再弹框后重开）",
+            visible and bool(error_text.strip()),
+            f"可见={visible} 文案={error_text.splitlines()[0] if error_text else ''}",
         )
         _cancel_button(form)
 
@@ -241,7 +260,19 @@ def check_prefill_and_cancel(expected_title: str) -> Callable[[QWidget], None]:
 def dismiss_message_box(
     button: QMessageBox.StandardButton, shot: str | None = None
 ) -> Callable[[QWidget], None]:
-    """点掉消息框；需要留证时顺手截一张图。"""
+    """点掉消息框；需要留证时顺手截一张图。
+
+    删除确认用的是**自定义按钮**（中文「删除」「取消」），不是 Qt 的标准
+    Yes/No，所以 `box.button(StandardButton)` 可能返回 None；这时按文案找。
+    标准按钮在装了中文翻译后文案也会变，因此两种都认。
+    """
+
+    fallbacks = {
+        QMessageBox.StandardButton.Yes: ("删除", "是", "Yes"),
+        QMessageBox.StandardButton.No: ("取消", "否", "No"),
+        QMessageBox.StandardButton.Ok: ("确定", "OK"),
+        QMessageBox.StandardButton.Cancel: ("取消", "Cancel"),
+    }
 
     def act(modal: QWidget) -> None:
         if not _expect(modal, QMessageBox, "消息框"):
@@ -250,6 +281,12 @@ def dismiss_message_box(
         if shot:
             save(box.grab(), shot)
         target = box.button(button)
+        if target is None:
+            wanted = fallbacks.get(button, ())
+            for candidate in box.buttons():
+                if candidate.text().replace("&", "") in wanted:
+                    target = candidate
+                    break
         if target is not None:
             target.click()
 
@@ -352,7 +389,7 @@ def run_scenario(
     return window
 
 
-_TITLE_COLUMN: Final = 1  # 列表列序：0=时间 1=标题 2=备注
+_TITLE_COLUMN: Final = 2  # 列表列序：0=日期 1=时间 2=标题 3=备注
 
 
 def _first_row_id(window: MainWindow) -> str | None:
@@ -394,7 +431,24 @@ def scenario_visuals(app: QApplication) -> None:
         window._table.rowCount() == 3,
         f"表格行数={window._table.rowCount()}",
     )
-    check("V-01 顶部工具栏六个按钮", len(window._actions) == 6, str(list(window._actions)))
+    check("V-01 顶部工具栏七个入口", len(window._actions) == 7, str(list(window._actions)))
+    toolbar = window.findChild(QToolBar)
+    primary_button = None if toolbar is None else toolbar.widgetForAction(window._actions["create"])
+    check(
+        "V-01 「新增」是工具栏上唯一的主色入口",
+        primary_button is not None and primary_button.objectName() == "PrimaryAction",
+        "未标记主色" if primary_button is None else primary_button.objectName(),
+    )
+    check(
+        "V-01 单日视图收起重复的日期列",
+        window._table.isColumnHidden(0),
+        f"isColumnHidden(0)={window._table.isColumnHidden(0)}",
+    )
+    check(
+        "V-01 状态栏右侧写明数据时间",
+        "更新" in window._summary_label.text(),
+        window._summary_label.text(),
+    )
     save(window.grab(), "main-window.png")
 
     # V-05 选中一行，选中文案跟着变
@@ -418,11 +472,19 @@ def scenario_visuals(app: QApplication) -> None:
     empty_day = dt.date(2026, 10, 20)
     window._on_day_picked(empty_day)
     app.processEvents()
-    first_cell = window._table.item(0, 0)
+    # 空状态是**整块替换表格**的一页，不再往表格里插一行灰字：
+    # 断言要看当前显示的是哪一页，而不是某一行单元格的文案。
+    showing_empty = window._stack.currentWidget() is window._empty_state
+    empty_title = window._empty_state.title_text
     check(
         "V-06 空日期显示空状态而不是白板",
-        first_cell is not None and "还没有日程" in first_cell.text(),
-        first_cell.text() if first_cell else "<空格子>",
+        showing_empty and "还没有日程" in empty_title,
+        empty_title if showing_empty else "<还在显示表格>",
+    )
+    check(
+        "V-06 空状态给出可点的下一步",
+        window._empty_state.action_text == "新增这一天",
+        window._empty_state.action_text,
     )
     check("V-06 空状态显示共 0 条", "共 0 条" in window._day_label.text(), window._day_label.text())
     save(window.grab(), "empty-state.png")
@@ -503,7 +565,7 @@ def scenario_invalid_title(app: QApplication, service: RecordingService) -> None
         service,
         [
             fill_and_submit(title="   ", date_text="2026-10-15", time_text="09:00", notes=""),
-            dismiss_message_box(QMessageBox.StandardButton.Ok),
+            # 不再有消息框：表单自己留在屏幕上，错误显示在顶部。
             check_prefill_and_cancel("   "),
         ],
         lambda w: w._actions["create"].trigger(),
@@ -585,16 +647,22 @@ def scenario_edit_moves_day(app: QApplication, service: RecordingService) -> Non
 
 def scenario_delete_guards(app: QApplication, service: RecordingService) -> None:
     """V-10 未选中不调服务；V-11 取消不删；V-12 确定删除；V-13 重复删除不炸。"""
-    # V-10：未选中任何行
+    # V-10：未选中任何行。界面这里已经把按钮置灰（看不见就不该点得动），
+    # 所以直接问 controller 要一次删除，验证它仍然只提示、不碰服务。
     window = build_window(service)
     window.show()
     app.processEvents()
     before = window._table.rowCount()
+    check(
+        "V-10 未选中时「删除」在界面上不可点",
+        not window._actions["delete"].isEnabled(),
+        f"delete.isEnabled()={window._actions['delete'].isEnabled()}",
+    )
     window = run_scenario(
         app,
         service,
         [dismiss_message_box(QMessageBox.StandardButton.Ok)],
-        lambda w: w._actions["delete"].trigger(),
+        lambda w: w._controller.request_delete(),
         window=window,
     )
     check(
@@ -784,6 +852,18 @@ def scenario_real_service(app: QApplication) -> None:
 def main() -> int:
     """跑一遍全部场景；返回失败条数。"""
     app = QApplication(sys.argv)
+    # 与真实入口一致地装中文翻译：否则截图里消息框的按钮是 OK / Cancel。
+    _install_chinese_texts(app)
+    # 截图必须是**可复现**的：主题、窗口几何、分栏位置、列宽、排序全都存在
+    # QSettings 里，跑脚本的人上次调过窗口，生成出来的整套图就跟提交的不一样。
+    # 这里把 QSettings 落到临时 INI，并清空一次——每次开拍都从出厂状态开始。
+    settings_root = Path(tempfile.gettempdir()) / "sdms-shoot-qsettings"
+    settings_root.mkdir(parents=True, exist_ok=True)
+    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(settings_root))
+    settings = QSettings("SDMS", "SDMS")
+    settings.clear()
+    settings.sync()
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     scenario_visuals(app)

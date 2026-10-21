@@ -96,6 +96,9 @@ class ScheduleController:
         self._selected_id = None
         self._search_text = ""
         self._view.clear_search()
+        # 日历必须跟着走：日期是**一个**真值，不能日历一份、controller 一份。
+        # 点摘要条目、键盘换天都汇到这里，界面因此不会出现"左边 20 号、右边 23 号"。
+        self._view.select_calendar_day(day)
         self.refresh()
 
     def refresh(self) -> bool:
@@ -300,6 +303,38 @@ class ScheduleController:
             FormRequest(mode="create", heading="复制日程", initial=self._draft_from_row(row))
         )
 
+    def request_move_to_day(self, schedule_id: str, day: dt.date) -> bool:
+        """把一条日程改到另一天：拖到日历上时走这条路径。
+
+        只有一个字段变了，所以**不打开表单**——拖一下弹一个填好的表单，
+        等于把这个手势的意义抵消掉了。其余字段原样回填，交给同一个
+        `update_schedule` 用例，失败处理也与「修改」完全一致。
+
+        返回值：真的写成功了才 True；拖回原日期不算一次修改，直接返回 True
+        且不调用服务（少一次无意义的写库）。
+        """
+        row = self._row_by_id(schedule_id)
+        if row is None:
+            self._selected_id = None
+            self._sync_selection()
+            self._view.show_info(presenters.stale_selection_text())
+            return False
+
+        if row.date == day:
+            self._view.show_status(presenters.moved_same_day_text(row.title_text))
+            return True
+
+        draft = replace(self._draft_from_row(row), date_text=presenters.format_date(day))
+        result = self._save_once(draft, mode="edit", schedule_id=schedule_id)
+        if result.error is not None:
+            headline, message = result.error
+            self._view.show_error(headline, message)
+            return False
+
+        self.refresh()
+        self._view.show_status(presenters.moved_text(result.saved_title, day))
+        return True
+
     def request_delete(self) -> None:
         """点击「删除」：未选中不调服务，确认框取消也不调服务（V-10 / V-11）。
 
@@ -377,8 +412,9 @@ class ScheduleController:
     def _run_form(self, request: FormRequest, *, schedule_id: str | None = None) -> None:
         """反复打开表单，直到写入成功或用户主动取消。
 
-        失败时把用户上一次的草稿塞回 `initial` 再开一次，这样
-        "写入失败保留表单与已填内容"（5.2 节）不需要界面自己记状态。
+        失败时不弹消息框：把用户上一次的草稿塞回 `initial`、把后端结论放进
+        `error` 再开一次。窗口那边会复用同一个对话框，错误就显示在表单顶部，
+        用户能一边看原因一边改——弹框还得先点掉、再看一眼、再重填（5.2 节）。
         """
         pending = request
         while True:
@@ -394,8 +430,9 @@ class ScheduleController:
                 return
 
             headline, message = result.error
-            self._view.show_error(headline, message)
-            pending = replace(request, initial=draft)
+            # 标题与正文一起交给表单：错误条第一行是结论（"数据没能写入磁盘"），
+            # 第二行是下一步。只留正文会把"这属于哪一类问题"丢掉。
+            pending = replace(request, initial=draft, error=f"{headline}\n{message}")
 
     def _save_once(
         self,

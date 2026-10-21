@@ -21,8 +21,20 @@ from __future__ import annotations
 import datetime as dt
 from collections.abc import Mapping
 
-from PySide6.QtCore import QDate, QLocale, QPoint, QRect, Qt, Signal
-from PySide6.QtGui import QColor, QContextMenuEvent, QFont, QPainter, QPen, QTextCharFormat
+from PySide6.QtCore import QDate, QEvent, QLocale, QPoint, QRect, Qt, Signal
+from PySide6.QtGui import (
+    QColor,
+    QContextMenuEvent,
+    QDragEnterEvent,
+    QDragLeaveEvent,
+    QDragMoveEvent,
+    QDropEvent,
+    QFont,
+    QPainter,
+    QPen,
+    QTextCharFormat,
+    QWheelEvent,
+)
 from PySide6.QtWidgets import (
     QCalendarWidget,
     QHBoxLayout,
@@ -36,9 +48,13 @@ from PySide6.QtWidgets import (
 
 from . import presenters, theme
 from .ports import TodayProvider
+from .view_models import SCHEDULE_DRAG_MIME
 
-#: 底部提示的默认文案：把两种鼠标动作一次说清，省得用户去猜双击能不能用。
-_DEFAULT_HINT = "单击筛选 · 双击新增"
+#: 底部提示的默认文案：把三种动作一次说清，省得用户去猜双击能不能用、滚轮能不能翻月。
+_DEFAULT_HINT = "单击筛选 · 双击新增 · Ctrl+滚轮翻月"
+#: 日历的最大高度：窗口拉到 1440x900 时，月历不该被拉成一张大网——
+#: 每个日期格多出来的高度只是空，并不会让"哪天有日程"更好读。
+_PANEL_MAX_HEIGHT = 460
 
 
 def _to_qdate(day: dt.date) -> QDate:
@@ -62,11 +78,19 @@ class _CountCalendar(QCalendarWidget):
         super().__init__(parent)
         self._counts: dict[dt.date, int] = {}
         self._today_marker: dt.date | None = None
+        self._drop_hint: dt.date | None = None
         self._dark = False
 
     def set_counts(self, counts: Mapping[dt.date, int]) -> None:
         """记下这个月每个日期的条数并重绘；条数为 0 的日期按「没有」处理。"""
         self._counts = {day: total for day, total in counts.items() if total > 0}
+        self.updateCells()
+
+    def set_drop_hint(self, day: dt.date | None) -> None:
+        """拖拽时给落点那一格描个框；传 None 清掉。"""
+        if self._drop_hint == day:
+            return
+        self._drop_hint = day
         self.updateCells()
 
     def set_today(self, day: dt.date) -> None:
@@ -115,6 +139,16 @@ class _CountCalendar(QCalendarWidget):
         finally:
             painter.restore()
 
+        if self._drop_hint is not None and cell_date == self._drop_hint:
+            painter.save()
+            try:
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+                painter.setPen(QPen(QColor(colors.primary), 2))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawRect(rect.adjusted(1, 1, -1, -1))
+            finally:
+                painter.restore()
+
     def set_dark(self, dark: bool) -> None:
         self._dark = dark
         self.updateCells()
@@ -157,6 +191,8 @@ class CalendarPanel(QWidget):
     day_picked = Signal(object)
     day_activated = Signal(object)
     month_changed = Signal(int, int)
+    #: 有日程被拖到某一天：`(schedule_id, date)`。窗口把它交给 controller 去改日期。
+    schedule_dropped = Signal(str, object)
 
     def __init__(
         self,
@@ -168,9 +204,15 @@ class CalendarPanel(QWidget):
         self._today = today
         self._counts: dict[dt.date, int] = {}
         self._dark = False
+        # 「当前选中的日期」只认一个真值：外部把日历挪到某天时置 True，
+        # 屏蔽掉随之而来的 selectionChanged，避免"程序改选中 → 又当成用户点了"的回环。
+        self._syncing = False
+        self._last_notified: dt.date | None = None
 
         # 左卡片只放日历后仍有足够高度；360 是日期行不再被压扁的下限。
         self.setMinimumHeight(360)
+        # 上限解决"窗口拉高、日历跟着被拉成一张大网"：多出来的高度应该给列表。
+        self.setMaximumHeight(_PANEL_MAX_HEIGHT)
 
         self._calendar = _CountCalendar(self)
         self._calendar.setFirstDayOfWeek(Qt.DayOfWeek.Monday)
@@ -208,10 +250,44 @@ class CalendarPanel(QWidget):
         layout.addWidget(self._calendar, 1)
         layout.addLayout(button_row)
 
+        # 接住从右侧列表拖过来的日程：拖一下就能改日期，不用开表单。
+        self.setAcceptDrops(True)
         self._calendar.clicked.connect(self._emit_clicked)
+        self._calendar.selectionChanged.connect(self._emit_selection_changed)
         self._calendar.activated.connect(self._emit_activated)
         self._calendar.currentPageChanged.connect(self._emit_month_changed)
         self._today_button.clicked.connect(self.go_today)
+        # Ctrl+滚轮翻月：滚轮单独用很容易和"滚页面"抢事件，加修饰键才不误触。
+        self._calendar.installEventFilter(self)
+
+    # ------------------------------------------------------------------ 事件
+
+    def eventFilter(self, watched: object, event: QEvent) -> bool:  # noqa: N802
+        """Ctrl+滚轮翻月。
+
+        要求按 Ctrl 才翻，是因为日历正处在整页布局里：普通滚轮应当是"滚页面"的，
+        劫持它会让用户在看列表时手一滑就换了月份。翻月走
+        `showPreviousMonth/showNextMonth`，`currentPageChanged` 会照常带动
+        条数刷新，不需要在这里额外发信号。
+        """
+        if (
+            watched is self._calendar
+            and event.type() == QEvent.Type.Wheel
+            and isinstance(event, QWheelEvent)
+            and bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+        ):
+            delta = event.angleDelta().y()
+            if delta:
+                self._step_month(-1 if delta > 0 else 1)
+            return True
+        return super().eventFilter(watched, event)  # type: ignore[arg-type]
+
+    def _step_month(self, step: int) -> None:
+        """往前/往后一个月。"""
+        if step < 0:
+            self._calendar.showPreviousMonth()
+        else:
+            self._calendar.showNextMonth()
 
     # ------------------------------------------------------------------ 对外
 
@@ -219,8 +295,17 @@ class CalendarPanel(QWidget):
         return _to_date(self._calendar.selectedDate())
 
     def set_selected_day(self, day: dt.date) -> None:
-        """外部要求选中某天；不发出 `day_picked`，避免和刷新形成回环。"""
-        self._calendar.setSelectedDate(_to_qdate(day))
+        """外部要求选中某天；不发出 `day_picked`，避免和刷新形成回环。
+
+        这是「当前日期只有一个真值」的落点：点摘要条目、搜索结果跳转等入口
+        改的是 controller 的日期，日历在这里被要求跟上，而不是反过来通知一遍。
+        """
+        self._syncing = True
+        try:
+            self._calendar.setSelectedDate(_to_qdate(day))
+        finally:
+            self._syncing = False
+        self._last_notified = day
 
     def set_hint(self, text: str) -> None:
         """日历底部那行小字；传空串时回到默认的「单击筛选 · 双击新增」。"""
@@ -228,7 +313,12 @@ class CalendarPanel(QWidget):
 
     def go_today(self) -> None:
         today = _to_qdate(self._today())
-        self._calendar.setSelectedDate(today)
+        self._syncing = True
+        try:
+            self._calendar.setSelectedDate(today)
+        finally:
+            self._syncing = False
+        self._last_notified = _to_date(today)
         self.day_picked.emit(_to_date(today))
 
     def set_counts(self, counts: Mapping[dt.date, int]) -> None:
@@ -247,6 +337,50 @@ class CalendarPanel(QWidget):
         self._dark = dark
         self._calendar.set_dark(dark)
         self._paint_formats()
+
+    # -------------------------------------------------------------- 拖放改期
+
+    def _day_at(self, pos: QPoint) -> dt.date | None:
+        """本面板坐标 → 日历格上的日期；落在非日期区（表头、按钮行）返回 None。"""
+        return self._calendar.date_at(self._calendar.mapFrom(self, pos))
+
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:  # noqa: N802
+        """只接受"我们自己的行"：别把随便一段文字或文件拖进来当成改期。"""
+        if event.mimeData().hasFormat(SCHEDULE_DRAG_MIME):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event: QDragMoveEvent) -> None:  # noqa: N802
+        """落点跟着鼠标走：有效的日期格描框并接受，其他地方一律拒绝。"""
+        day = self._day_at(event.position().toPoint())
+        if day is None:
+            self._calendar.set_drop_hint(None)
+            event.ignore()
+            return
+        self._calendar.set_drop_hint(day)
+        event.setDropAction(Qt.DropAction.MoveAction)
+        event.accept()
+
+    def dragLeaveEvent(self, event: QDragLeaveEvent) -> None:  # noqa: N802
+        self._calendar.set_drop_hint(None)
+        event.accept()
+
+    def dropEvent(self, event: QDropEvent) -> None:  # noqa: N802
+        """松手才提交：落点日期与 id 一起发给窗口，由 controller 决定怎么写。"""
+        day = self._day_at(event.position().toPoint())
+        self._calendar.set_drop_hint(None)
+        if day is None:
+            event.ignore()
+            return
+        raw = event.mimeData().data(SCHEDULE_DRAG_MIME).data()
+        schedule_id = bytes(raw).decode("utf-8").strip()
+        if not schedule_id:
+            event.ignore()
+            return
+        event.setDropAction(Qt.DropAction.MoveAction)
+        event.accept()
+        self.schedule_dropped.emit(schedule_id, day)
 
     # ------------------------------------------------------------ 右键菜单
 
@@ -296,7 +430,24 @@ class CalendarPanel(QWidget):
         self._calendar.setDateTextFormat(_to_qdate(today), today_format)
 
     def _emit_clicked(self, day: QDate) -> None:
-        self.day_picked.emit(_to_date(day))
+        self._emit_day(_to_date(day))
+
+    def _emit_selection_changed(self) -> None:
+        """选中日期变了就通知一次——**键盘换天也算**。
+
+        `QCalendarWidget` 的方向键只改 `selectedDate`，既不发 `clicked` 也不发
+        `activated`；只听 `clicked` 会让"方向键把选中挪到 21 号、右侧还是 20 号"。
+        鼠标点击同样会走到这里，因此用 `_last_notified` 去重，保证一天只发一次。
+        """
+        if self._syncing:
+            return
+        self._emit_day(self.selected_day())
+
+    def _emit_day(self, day: dt.date) -> None:
+        if day == self._last_notified:
+            return
+        self._last_notified = day
+        self.day_picked.emit(day)
 
     def _emit_activated(self, day: QDate) -> None:
         """双击日期或选中后按 Enter：交给窗口去打开预填日期的表单。"""

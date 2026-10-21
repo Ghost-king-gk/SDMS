@@ -24,7 +24,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
-    QPushButton,
     QTableWidget,
 )
 
@@ -76,9 +75,14 @@ def test_table_has_date_column_and_shows_iso_date(qapp: QApplication) -> None:
         assert table is not None
         headers = [header_text(table, index) for index in range(table.columnCount())]
         assert headers == ["日期", "时间", "标题", "备注"]
-        assert table.columnWidth(0) == 105
-        assert table.columnWidth(1) == 90
-        assert table.columnWidth(2) == 240
+        # 单日视图里每行的日期都一样，日期列收起来把宽度让给标题与备注；
+        # 搜索会跨日期命中，那时日期列必须回来（另有用例专门验）。
+        assert table.isColumnHidden(0), "单日视图不该重复显示同一个日期"
+        # 日期与时间按内容宽度给足，标题与备注分剩余空间：备注列必须有可读下限，
+        # 否则窗口一窄就被 Stretch 挤成三十几像素，表头连两个字都放不下。
+        assert table.columnWidth(1) >= 64
+        assert table.columnWidth(2) >= 190
+        assert table.columnWidth(3) >= 120, f"备注列被挤到 {table.columnWidth(3)}px"
         assert cell_text(table, 0, 0) == "2026-10-20"
         assert cell_text(table, 0, 1) == "09:30"
     finally:
@@ -123,9 +127,10 @@ def test_search_updates_heading_rows_dates_and_clear_restores_day(qapp: QApplica
         search = window.findChild(QLineEdit, "SearchInput")
         heading = window.findChild(QLabel, "DayHeading")
         table = window.findChild(QTableWidget)
-        clear = window.findChild(QPushButton, "ClearSearch")
+        clear = window._clear_search_action
         assert search is not None and heading is not None and table is not None
-        assert clear is not None
+        assert not clear.isVisible(), "输入框是空的时候，清空入口不该出现"
+        assert table.isColumnHidden(0), "单日视图默认收起日期列"
 
         search.setText("周报")
         search.returnPressed.emit()
@@ -134,20 +139,27 @@ def test_search_updates_heading_rows_dates_and_clear_restores_day(qapp: QApplica
         assert heading.text() == "搜索“周报” · 共 2 条"
         assert table.rowCount() == 2
         assert [cell_text(table, row, 0) for row in range(2)] == ["2026-10-20", "2026-10-26"]
+        # 搜索跨日期：日期列必须出现，否则"这条在哪天"无从得知。
+        assert not table.isColumnHidden(0), "搜索态必须显示日期列"
+        assert clear.isVisible(), "有输入时清空入口要出现"
 
-        clear.click()
+        clear.trigger()
         QApplication.processEvents()
 
         assert search.text() == "", "清空按钮必须同时清掉输入框"
         assert heading.text().startswith("2026-10-20 周二")
         assert table.rowCount() == 1
+        assert not clear.isVisible(), "清空之后清空入口要跟着收起"
+        assert table.isColumnHidden(0), "退出搜索后又回到单日视图，日期列再收起"
 
         search.setText("没有这个日程")
         search.returnPressed.emit()
         QApplication.processEvents()
 
         assert heading.text() == "搜索“没有这个日程” · 共 0 条"
-        assert "没有找到匹配" in cell_text(table, 0, 0)
+        # 空结果不再往表格里插提示行，改为整块空状态
+        assert table.rowCount() == 0
+        assert "没有找到匹配" in window._empty_state.title_text
     finally:
         window.close()
 

@@ -473,10 +473,12 @@ def test_create_forwards_unrecognizable_date_text_to_backend() -> None:
     controller.request_create()
 
     assert service.calls_of("create")[0][2] == "明天", "界面不能替后端先判一次"
-    headline, message = view.errors[-1]
-    assert headline == "无法保存"
-    assert "无法识别的日期：明天" in message
-    assert headline != "日期格式不正确", "不能再回到前端先拦一道的老说法"
+    # 失败不再弹消息框：结论直接带进第二次打开的表单，用户边看原因边改。
+    retry = view.form_requests[-1]
+    assert retry.error.startswith("无法保存"), "错误条第一行是结论"
+    assert "无法识别的日期：明天" in retry.error
+    assert "日期格式不正确" not in retry.error, "不能再回到前端先拦一道的老说法"
+    assert view.errors == [], "表单内的错误不该再叠一个消息框"
 
 
 def test_failed_save_reopens_form_with_previous_values() -> None:
@@ -628,10 +630,10 @@ def test_storage_error_points_at_the_data_file() -> None:
 
     controller.request_create()
 
-    headline, message = view.errors[-1]
-    assert headline == "数据没能写入磁盘"
-    assert "数据库文件不可写" in message
-    assert "再试" in message, "异常提示必须带下一步，不能只说失败"
+    retry = view.form_requests[-1]
+    assert retry.error.startswith("数据没能写入磁盘")
+    assert "数据库文件不可写" in retry.error
+    assert "再试" in retry.error, "异常提示必须带下一步，不能只说失败"
 
 
 def test_refresh_returns_true_on_success() -> None:
@@ -898,3 +900,54 @@ def test_select_upcoming_jumps_to_day_and_selects_row() -> None:
     assert controller.selected_id == "id-3"
     assert controller.search_text == "", "从摘要跳转必须先退出搜索态"
     assert [row.schedule_id for row in view.last_rows] == ["id-3"]
+
+
+# --------------------------------------------------------------- 拖动改期
+
+
+def test_move_to_day_updates_only_the_date_and_keeps_title_time_notes() -> None:
+    """拖到另一天：只改日期，标题/时间/备注原样带过去，且不打开表单。"""
+    controller, service, view = build_controller()
+    controller.start()
+    view.form_requests.clear()
+
+    assert controller.request_move_to_day("id-1", TOMORROW) is True
+
+    updates = service.calls_of("update")
+    assert updates == [("update", "id-1", "写周报", "2026-10-16", "09:30", "")]
+    assert view.form_requests == [], "拖动不该弹出表单，否则这个手势就白做了"
+    assert view.last_status.startswith("已把「写周报」改到")
+
+
+def test_move_to_the_same_day_does_not_touch_the_service() -> None:
+    """拖回原处不算修改：不写库，只用一句话说明没有改动。"""
+    controller, service, view = build_controller()
+    controller.start()
+
+    assert controller.request_move_to_day("id-1", TODAY) is True
+
+    assert service.calls_of("update") == []
+    assert "没有改动" in view.last_status
+
+
+def test_move_of_unknown_id_reports_stale_selection_without_writing() -> None:
+    """拖的是一条已经不存在的行：提示一下，绝不去写库。"""
+    controller, service, view = build_controller()
+    controller.start()
+
+    assert controller.request_move_to_day("ghost", TOMORROW) is False
+
+    assert service.calls_of("update") == []
+    assert view.infos[-1] == presenters.stale_selection_text()
+
+
+def test_move_reports_backend_error_and_leaves_data_alone() -> None:
+    """后端拒绝时把原因翻成人话，列表保持原样。"""
+    controller, service, view = build_controller()
+    controller.start()
+    service.fail_next("update", ValidationError("日期不合法"))
+
+    assert controller.request_move_to_day("id-1", TOMORROW) is False
+
+    assert view.errors, "失败必须给出提示"
+    assert all(item.date == TODAY for item in service.items), "失败不该改到别的日期"

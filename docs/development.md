@@ -12,7 +12,7 @@
 - **入口**：`ui/app.py` 默认通过 `composition.connect()` + `composition.build_service()` 使用 SQLite，退出时在 `finally` 关闭连接；
 - **演示模式**：`main(seed_demo_data=True)` 使用内存替身 `DevStubScheduleService`，只用于截图/演示，不打开数据库。
 
-仍在人工验收中的部分：Windows 真窗口的字体、DPI、原生样式、截图与美术效果。V-14「重启后数据仍在」已由 `scripts/shoot_ui.py` 的真服务场景在真 SQLite 临时库上验过并留截图，机器可判定的 38 项断言全过（32 项界面回归 + 6 项真服务）。
+仍在人工验收中的部分：Windows 真窗口的字体、DPI、原生样式、截图与美术效果。V-14「重启后数据仍在」已由 `scripts/shoot_ui.py` 的真服务场景在真 SQLite 临时库上验过并留截图，机器可判定的 44 项断言全过（38 项界面回归 + 6 项真服务）。
 
 ### 分层与依赖方向
 
@@ -247,7 +247,7 @@ uv run pytest
 uv run pytest --cov=src --cov-report=term-missing
 ```
 
-当前测试总数 **372**，`mypy src tests` 检查 **47** 个源文件，`ruff format --check` 检查 **72** 个文件。测试命令在两个平台上完全一致。
+当前测试总数 **431**，`mypy src tests` 检查 **49** 个源文件，`ruff format --check` 检查 **74** 个文件。测试命令在两个平台上完全一致。
 
 ### 环境门禁
 
@@ -291,13 +291,13 @@ uv run pytest --cov=src --cov-report=term-missing
 | 字节码编译 | `uv run python -m compileall -q src tests` | 通过 |
 | 项目包导入 | `uv run python -c "import schedule_management as m; print(m.__file__)"` | 指向 `src/schedule_management/__init__.py` |
 | PySide6 可用性 | `uv run python -c "import PySide6; print(PySide6.__version__)"` | 6.12.0（Qt 6.12.0） |
-| 自动化测试 | `uv run pytest -q` | `372 passed` |
+| 自动化测试 | `uv run pytest -q` | `431 passed` |
 | 类型检查 | `uv run mypy src tests` | `Success: no issues found in 47 source files` |
 | 入口冒烟 | `app.main(..., db_path=临时库)` offscreen | 窗口 2 行、退出码 0、关连接重开数据仍在 |
 
 说明：
 
-- `scripts/shoot_ui.py` 用于在 Windows 桌面上生成截图与断言，输出写入 `screenshots/`：32 项界面回归跑内存替身（种子确定、不进磁盘），6 项真服务场景走 `composition.connect() -> build_service()` 真链路 + 临时目录真 SQLite，并产出 `main-window-real-service.png` / `main-window-real-restart.png` 两张真服务截图。
+- `scripts/shoot_ui.py` 用于在 Windows 桌面上生成截图与断言，输出写入 `screenshots/`：38 项界面回归跑内存替身（种子确定、不进磁盘），6 项真服务场景走 `composition.connect() -> build_service()` 真链路 + 临时目录真 SQLite，并产出 `main-window-real-service.png` / `main-window-real-restart.png` 两张真服务截图。
 - V-14「重启后数据仍在」已由上述真服务场景验证（关窗、关连接、重开同一库，数据仍在）；Windows 端剩余人工项是字体、DPI 缩放与原生样式在各分辨率下的目视检查。
 - Windows 环境结果待拥有 Windows 设备的成员按第 2 节执行后补充，请勿照抄 Linux 数据。
 

@@ -144,9 +144,30 @@ def upcoming_item_text(row: ScheduleRow) -> str:
     return f"{day_text} · {row.time_text} · {row.title_text}"
 
 
+def upcoming_line(row: ScheduleRow, *, new_day: bool = True) -> str:
+    """摘要里的一行；同一天的第二条起不再重复日期。
+
+    原来每行都写 `10-20 周二 · 09:30 · 标题`，同一天有三条时前两段一模一样，
+    真正的信息（时间与标题）被挤到后半行。`new_day=False` 时只留时间与标题，
+    并用两个全角空格缩进，同一组在视觉上贴在一起。
+    """
+    if new_day:
+        return upcoming_item_text(row)
+    return f"{row.time_text} · {row.title_text}"
+
+
 def upcoming_empty_text() -> str:
     """未来 7 天没有任何日程时的占位文案。"""
     return "未来 7 天没有日程"
+
+
+def synced_at_text(stamp: str) -> str:
+    """状态栏右侧常驻的一行事实：这一屏数据是什么时候取回来的。
+
+    「就绪」两个字不提供任何信息；条数左边已经写过（`ready_text`），所以这里
+    只补时间戳。它回答的是另一个问题：我看到的是不是刚才那一次的结果。
+    """
+    return f"{stamp} 更新"
 
 
 def detail_text(row: ScheduleRow) -> str:
@@ -210,6 +231,25 @@ def undo_unavailable_text() -> str:
     这不是错误：可能是撤销已经完成，也可能是这次运行里还没有删除过。
     """
     return "没有可以撤销的删除。"
+
+
+def undo_expired_text() -> str:
+    """删除已经过了可撤销的时间窗。
+
+    与"没有可以撤销的删除"分开说：这条记录确实被删了，只是反悔的时机过了，
+    用户需要知道的是"去手动重建一条"，而不是"你从来没删过东西"。
+    """
+    return "撤销窗口（5 秒）已过，这条日程不能再自动恢复，需要重新添加。"
+
+
+def moved_text(title: str, day: dt.date) -> str:
+    """拖动改期成功后的状态栏："已把「X」改到 10-23 周五"。"""
+    return f"已把「{title}」改到 {date_heading(day)}"
+
+
+def moved_same_day_text(title: str) -> str:
+    """拖回了原处：不是失败，但也没发生修改，说清楚比静默好。"""
+    return f"「{title}」本来就在这一天，没有改动"
 
 
 def no_selection_text() -> str:
