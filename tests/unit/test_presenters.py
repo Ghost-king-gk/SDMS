@@ -114,6 +114,40 @@ def test_upcoming_item_text_marks_missing_date_instead_of_omitting_it() -> None:
     assert presenters.upcoming_empty_text() == "未来 7 天没有日程"
 
 
+def test_upcoming_line_drops_the_date_for_further_items_on_the_same_day() -> None:
+    """同一天的第二条起不再重复日期：重复的两段会把真正的信息挤到后半行。"""
+    first = ScheduleRow(
+        schedule_id="id-1",
+        time_text="08:30",
+        title_text="晨读英语",
+        notes_text="",
+        date=dt.date(2026, 10, 15),
+    )
+    second = ScheduleRow(
+        schedule_id="id-2",
+        time_text="14:00",
+        title_text="数据结构习题课",
+        notes_text="",
+        date=dt.date(2026, 10, 15),
+    )
+    next_day = ScheduleRow(
+        schedule_id="id-3",
+        time_text="10:00",
+        title_text="数据库实验",
+        notes_text="",
+        date=dt.date(2026, 10, 16),
+    )
+
+    assert presenters.upcoming_line(first, new_day=True) == "10-15 周四 · 08:30 · 晨读英语"
+    assert presenters.upcoming_line(second, new_day=False) == "14:00 · 数据结构习题课"
+    assert presenters.upcoming_line(next_day, new_day=True) == "10-16 周五 · 10:00 · 数据库实验"
+
+
+def test_synced_at_text_says_when_not_how_many() -> None:
+    """条数在左侧的状态文案里已经写过，这里只补时间，避免同一句话出现两遍。"""
+    assert presenters.synced_at_text("21:03") == "21:03 更新"
+
+
 def test_detail_text_shows_date() -> None:
     row = ScheduleRow(
         schedule_id="id-1",

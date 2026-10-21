@@ -64,6 +64,14 @@ class MainViewPort(Protocol):
     def show_upcoming(self, rows: Sequence[ScheduleRow]) -> None:
         """显示未来 7 天摘要（含今天），按日期与时间顺序；空序列显示占位文案。"""
 
+    def select_calendar_day(self, day: dt.date) -> None:
+        """让日历把选中格移到 `day`，**不得反过来再发一次"用户选了某天"**。
+
+        这是"当前日期只有一个真值"的落地方式：日期可能是被别的入口改的
+        （点摘要条目、键盘在日历上换天、将来从搜索结果跳转），日历必须跟着走。
+        窗口实现要屏蔽由本次移动产生的选中变化信号，否则会形成回环。
+        """
+
     def show_month_counts(self, counts: dict[dt.date, int]) -> None:
         """用「当月每个有日程的日期 → 条数」标记日历（① 区）。
 

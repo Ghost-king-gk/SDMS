@@ -18,6 +18,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from PySide6.QtCore import QLibraryInfo, QLocale, QTranslator
 from PySide6.QtWidgets import QApplication
 
 from schedule_management import composition
@@ -35,6 +36,23 @@ def build_demo_service(today: dt.date) -> ScheduleServicePort:
     service = DevStubScheduleService()
     service.seed_defaults(today)
     return service
+
+
+def _install_chinese_texts(app: QApplication) -> QTranslator | None:
+    """让 Qt **自带**的文案也说中文（消息框的 OK / Cancel、右键菜单等）。
+
+    项目自己的文案早就是中文，但 `QMessageBox` 的标准按钮、行编辑的右键菜单
+    由 Qt 提供，不装翻译包就一直是英文——界面里最显眼的"英文"其实都来自这里。
+    取的是 PySide6 随包分发的 `qtbase_zh_CN.qm`，找不到就静默跳过（界面仍然
+    可用，只是标准按钮回到英文），不让翻译包缺失把程序挡在启动之前。
+    """
+    QLocale.setDefault(QLocale(QLocale.Language.Chinese, QLocale.Country.China))
+    translator = QTranslator(app)
+    directory = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
+    if translator.load("qtbase_zh_CN", directory):
+        app.installTranslator(translator)
+        return translator
+    return None
 
 
 def _run_window(app: QApplication, service: ScheduleServicePort, clock: TodayProvider) -> int:
@@ -60,6 +78,8 @@ def main(
     """
     arguments = list(sys.argv[1:] if argv is None else argv)
     app = QApplication(arguments)
+    # 必须在建窗口之前装：窗口里的控件在构造期就会问 Qt 要标准文案。
+    _install_chinese_texts(app)
 
     resolved_clock = clock or (lambda: today or dt.date.today())
 

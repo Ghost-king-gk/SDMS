@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import datetime as dt
 import sys
+import tempfile
 from pathlib import Path
 
+from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication, QTableView
 
 from schedule_management.dev_stub_service import DevStubScheduleService
@@ -76,6 +78,14 @@ def _save(window: MainWindow, name: str) -> Path:
 
 def main() -> int:
     app = QApplication(sys.argv)
+    # 与 `shoot_ui.py` 一样把 QSettings 落到临时 INI：这个脚本会切换主题、开关窗口，
+    # 不隔离就会改写跑脚本的人真机上的主题、窗口几何与分栏位置。
+    settings_root = Path(tempfile.gettempdir()) / "sdms-shoot-qsettings"
+    settings_root.mkdir(parents=True, exist_ok=True)
+    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(settings_root))
+    QSettings("SDMS", "SDMS").clear()
+
     window = MainWindow(service=_seed_service(), clock=lambda: TODAY)
     window.resize(1040, 680)
     window.show()

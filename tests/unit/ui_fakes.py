@@ -232,6 +232,7 @@ class FakeMainView:
         self.search_states: list[tuple[str, int]] = []
         self.clear_search_calls = 0
         self.upcoming: list[tuple[ScheduleRow, ...]] = []
+        self.calendar_days: list[dt.date] = []
         self.month_counts: list[dict[dt.date, int]] = []
         self.selections: list[str] = []
         self.statuses: list[str] = []
@@ -273,6 +274,10 @@ class FakeMainView:
 
     def show_upcoming(self, rows: Sequence[ScheduleRow]) -> None:
         self.upcoming.append(tuple(rows))
+
+    def select_calendar_day(self, day: dt.date) -> None:
+        """记录"日历被要求跳到哪天"：用来断言筛选日期与日历不会各说各话。"""
+        self.calendar_days.append(day)
 
     def show_month_counts(self, counts: dict[dt.date, int]) -> None:
         self.month_counts.append(dict(counts))

@@ -15,6 +15,11 @@ from typing import Literal
 
 FormMode = Literal["create", "edit"]
 
+#: 从列表行拖到日历上时携带的 MIME 类型，载荷是 `schedule_id`。
+#: 放在这里而不是窗口模块：拖源（表格）与落点（日历）分属两个文件，
+#: 常量必须有唯一出处，否则两边各写一份就可能拼错而静默失效。
+SCHEDULE_DRAG_MIME = "application/x-sdms-schedule-id"
+
 
 @dataclass(frozen=True)
 class ScheduleRow:
@@ -66,10 +71,14 @@ class FormRequest:
     新增与修改共用同一个表单窗口，差别只有窗口标题和是否预填，因此这里把
     「怎么开」也建模成数据：`mode` 决定后台调用哪个用例，`initial` 为空即空白表单。
 
-    失败重试时复用同一个数据对象：只要替换 `initial` 为用户上一次的草稿，
-    就能保证"写入失败保留已填内容"（`ui-interaction.md` 5.2 节）。
+    失败重试时复用同一个数据对象：替换 `initial` 为用户上一次的草稿、
+    `error` 为后端给的结论，就能保证"写入失败保留已填内容"，而且错误显示在
+    表单**里面**而不是先弹一个框再关掉重开（`ui-interaction.md` 5.2 节）。
     """
 
     mode: FormMode
     heading: str
     initial: ScheduleDraft | None = None
+    #: 上一次提交失败的原因；空串表示这是一次全新的打开。窗口拿它决定是复用
+    #: 当前对话框（就地显示错误）还是新建一个。
+    error: str = ""

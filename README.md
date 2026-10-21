@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](https://www.python.org/)
 [![PySide6](https://img.shields.io/badge/PySide6-6.12-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)]()
-[![Tests](https://img.shields.io/badge/Tests-372%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-431%20passed-brightgreen.svg)]()
 [![License](https://img.shields.io/badge/License-Course%20Project-lightgrey.svg)]()
 
 </div>
@@ -39,7 +39,7 @@
 - 💾 **本地持久化**：SQLite 存储，重启程序后数据仍在；
 - 🛡️ **友好错误提示**：区分输入错误、记录不存在、重复 ID 与存储故障，不向用户泄露堆栈；
 - 🧱 **分层架构**：`ui → application → domain`，`infrastructure` 实现仓储契约，`composition.py` 负责装配；
-- ✅ **自动化测试**：372 条测试覆盖交互规则、解析、CRUD、契约、SQLite 集成与入口装配。
+- ✅ **自动化测试**：431 条测试覆盖交互规则、解析、CRUD、契约、SQLite 集成与入口装配。
 
 ## 🚀 快速开始
 
@@ -130,7 +130,7 @@ uv run python -m compileall src
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
-uv run pytest -q                  # 372 passed
+uv run pytest -q                  # 431 passed
 ```
 
 详细的环境配置、Windows/Linux 差异、测试明细与验证结果见 [`docs/development.md`](docs/development.md)。
