@@ -42,6 +42,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QPushButton,
     QTableView,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -219,12 +220,55 @@ class CalendarPanel(QWidget):
         self._calendar.setGridVisible(False)
         # 中文界面里出现 “Mon/Tue” 与 “October” 很突兀；月份与星期都跟着中文走。
         self._calendar.setLocale(QLocale(QLocale.Language.Chinese, QLocale.Country.China))
+        # 内置星期条把周末染成红色，与 Apple 的克制配色冲突；换成自绘的一行小字，
+        # 颜色跟着主题走，也避免深色模式下那排红字格外刺眼。
+        self._calendar.setHorizontalHeaderFormat(
+            QCalendarWidget.HorizontalHeaderFormat.NoHorizontalHeader
+        )
         self._calendar.setVerticalHeaderFormat(
             QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader
         )
         # 默认会选中并翻到「真实今天」；注入的 today 才是这个界面认定的今天。
         self._calendar.setSelectedDate(_to_qdate(self._today()))
         self._calendar.set_today(self._today())
+        # 内置导航条把月份、年份与两个箭头拆成三件互不对齐的控件；换成自绘的一行，
+        # 顺序才是「月份导航 → 星期条 → 日期格」。
+        self._calendar.setNavigationBarVisible(False)
+
+        self._month_label = QLabel(self)
+        self._month_label.setObjectName("CalendarMonth")
+        self._month_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._prev_button = QToolButton(self)
+        self._prev_button.setObjectName("CalendarNav")
+        self._prev_button.setText("\u2039")
+        self._prev_button.setToolTip("上一个月")
+        self._prev_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._next_button = QToolButton(self)
+        self._next_button.setObjectName("CalendarNav")
+        self._next_button.setText("\u203a")
+        self._next_button.setToolTip("下一个月")
+        self._next_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        for button in (self._prev_button, self._next_button):
+            button.setFixedSize(28, 28)
+        nav_row = QHBoxLayout()
+        nav_row.setContentsMargins(0, 0, 0, 0)
+        nav_row.setSpacing(4)
+        nav_row.addWidget(self._prev_button)
+        nav_row.addStretch(1)
+        nav_row.addWidget(self._month_label)
+        nav_row.addStretch(1)
+        nav_row.addWidget(self._next_button)
+
+        self._weekday_bar = QWidget(self)
+        self._weekday_bar.setFixedHeight(22)
+        weekday_layout = QHBoxLayout(self._weekday_bar)
+        weekday_layout.setContentsMargins(0, 0, 0, 0)
+        weekday_layout.setSpacing(0)
+        for name in ("周一", "周二", "周三", "周四", "周五", "周六", "周日"):
+            weekday = QLabel(name, self._weekday_bar)
+            weekday.setObjectName("Weekday")
+            weekday.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            weekday_layout.addWidget(weekday, 1)
 
         self._today_label = QLabel(self)
         self._today_label.setObjectName("TodayLabel")
@@ -247,6 +291,8 @@ class CalendarPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
         layout.addWidget(self._today_label)
+        layout.addLayout(nav_row)
+        layout.addWidget(self._weekday_bar)
         layout.addWidget(self._calendar, 1)
         layout.addLayout(button_row)
 
@@ -256,9 +302,13 @@ class CalendarPanel(QWidget):
         self._calendar.selectionChanged.connect(self._emit_selection_changed)
         self._calendar.activated.connect(self._emit_activated)
         self._calendar.currentPageChanged.connect(self._emit_month_changed)
+        self._calendar.currentPageChanged.connect(self._sync_month_label)
+        self._prev_button.clicked.connect(lambda _checked=False: self._step_month(-1))
+        self._next_button.clicked.connect(lambda _checked=False: self._step_month(1))
         self._today_button.clicked.connect(self.go_today)
         # Ctrl+滚轮翻月：滚轮单独用很容易和"滚页面"抢事件，加修饰键才不误触。
         self._calendar.installEventFilter(self)
+        self._sync_month_label()
 
     # ------------------------------------------------------------------ 事件
 
@@ -288,6 +338,12 @@ class CalendarPanel(QWidget):
             self._calendar.showPreviousMonth()
         else:
             self._calendar.showNextMonth()
+
+    def _sync_month_label(self, *_args: object) -> None:
+        """自绘导航条中间的「2026 年 10 月」跟着当前页走。"""
+        self._month_label.setText(
+            f"{self._calendar.yearShown()} 年 {self._calendar.monthShown()} 月"
+        )
 
     # ------------------------------------------------------------------ 对外
 
@@ -408,17 +464,35 @@ class CalendarPanel(QWidget):
     # ------------------------------------------------------------------ 内部
 
     def _paint_formats(self) -> None:
-        """清空旧格式后重画：先有日程底色，再叠加今天的加粗与琥珀色。"""
+        """清空旧格式后重画：周末去红、有日程铺底色、今天最后叠加。
+
+        Qt 默认把周末染成红色；那是日历控件的默认值，不是我们的视觉口径。
+        这里把当月每个周六/周日的前景色改成弱化灰，再把"有日程"的底色合并进
+        同一个 `QTextCharFormat`——`setDateTextFormat` 是整份替换而不是叠加，
+        分两次调用会把周末的灰色覆盖回默认红。
+        """
         colors = theme.palette(self._dark)
         blank = QTextCharFormat()
         for old in self._calendar.dateTextFormat():
             self._calendar.setDateTextFormat(old, blank)
 
-        if self._counts:
-            event = QTextCharFormat()
-            event.setBackground(QColor(colors.event_background))
-            for day in self._counts:
-                self._calendar.setDateTextFormat(_to_qdate(day), event)
+        formats: dict[dt.date, QTextCharFormat] = {}
+        day = dt.date(self._calendar.yearShown(), self._calendar.monthShown(), 1)
+        while day.month == self._calendar.monthShown():
+            if day.weekday() >= 5:
+                weekend = QTextCharFormat()
+                weekend.setForeground(QColor(colors.muted))
+                formats[day] = weekend
+            day += dt.timedelta(days=1)
+
+        event = QColor(colors.event_background)
+        for day in self._counts:
+            fmt = formats.get(day, QTextCharFormat())
+            fmt.setBackground(event)
+            formats[day] = fmt
+
+        for day, fmt in formats.items():
+            self._calendar.setDateTextFormat(_to_qdate(day), fmt)
 
         today = self._today()
         today_format = QTextCharFormat()

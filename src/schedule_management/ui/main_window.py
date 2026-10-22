@@ -112,12 +112,13 @@ _SORT_SETTING: Final = "ui/sort"
 _SECTION_UPCOMING: Final = "接下来 7 天"
 _SEARCH_PLACEHOLDER: Final = "搜索标题或备注…"
 
-#: 行高 40 而不是 36：去掉行间分割线之后，行与行的分组只能靠留白，
-#: 36px 会让四列内容看起来挤成一整块。
-_ROW_HEIGHT: Final = 40
-_HEADER_HEIGHT: Final = 34
-_CARD_MARGIN: Final = 16
-_OUTER_MARGIN: Final = 18
+#: 行高 44 而不是 36：Apple 列表的呼吸感来自行高与留白，去掉行间分割线之后
+#: 只能靠它分组；36px 会让四列内容看起来挤成一整块。
+_ROW_HEIGHT: Final = 44
+_HEADER_HEIGHT: Final = 38
+#: 卡片内边距 20、外层 24：比上一版各多 4-6 px，窗口四周不再贴边。
+_CARD_MARGIN: Final = 20
+_OUTER_MARGIN: Final = 24
 _SEARCH_DEBOUNCE_MS: Final = 250
 _SEARCH_INPUT_WIDTH: Final = 220
 #: 摘要区不再写死高度：给它一个下限，剩下的交给拉伸因子，窗口变高它跟着变高。
@@ -146,15 +147,18 @@ _ACTION_SHORTCUTS: Final = {
 }
 
 #: 列宽跟着字体走：日期与时间都有确定的内容宽度，给够就行，剩下的都留给标题与备注。
-_TITLE_COLUMN_WIDTH: Final = 200
+_TITLE_COLUMN_WIDTH: Final = 220
 _DATE_COLUMN_WIDTH: Final = 104
-_TIME_COLUMN_WIDTH: Final = 72
+_TIME_COLUMN_WIDTH: Final = 92
 #: 备注列的默认宽度与下限。它以前是 `Stretch`：能吃满剩余宽度，但**双击分隔线
 #: 自适应内容会失效**（Qt 只对 Interactive 段响应），而且窗口一窄就被压到三十几像素。
 _NOTES_COLUMN_WIDTH: Final = 240
 _NOTES_COLUMN_MIN_WIDTH: Final = 120
-#: 表格的最小宽度：日历最低 320 + 这段宽度，窗口缩到 900 时备注列仍有一百多像素。
-#: 不设这条下限，Stretch 的备注列会被压到三十几像素，表头连「备注」两个字都放不下。
+#: 四列共用的最小宽度。表头文字（11px）加上左右各 12px 内边距后，
+#: 最窄的一列「时间」也只需要四十来像素；88 是给拖动留出的舒适下限——
+#: 再窄表头就会被挤掉，而列宽归零之后连拖回来的把手都找不到。
+_MIN_COLUMN_WIDTH: Final = 88
+#: 表格的最小宽度：日历最低 320 + 这段宽度，960x640 下备注列仍有二百多像素。
 _TABLE_MIN_WIDTH: Final = 520
 #: 需要在没有选中项时置灰的动作：这些语义上都要求"先有一条日程"。
 _SELECTION_ACTIONS: Final = ("view", "edit", "delete", "duplicate")
@@ -186,14 +190,13 @@ def _application_palette(colors: theme.Palette) -> QPalette:
     palette.setColor(QPalette.ColorRole.ToolTipText, QColor(colors.text))
     palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(colors.muted))
     palette.setColor(QPalette.ColorRole.Link, QColor(colors.primary))
-    for role in (
-        QPalette.ColorRole.Light,
-        QPalette.ColorRole.Midlight,
-        QPalette.ColorRole.Mid,
-        QPalette.ColorRole.Dark,
-        QPalette.ColorRole.Shadow,
-    ):
-        palette.setColor(role, QColor(colors.border))
+    palette.setColor(QPalette.ColorRole.Light, QColor(colors.border))
+    palette.setColor(QPalette.ColorRole.Midlight, QColor(colors.border))
+    # 原生分隔线（日历星期条、内部表头）跟着主题走：取比边框深一档的 separator，
+    # 与表格列分隔线保持同一个视觉口径。
+    palette.setColor(QPalette.ColorRole.Mid, QColor(colors.separator))
+    palette.setColor(QPalette.ColorRole.Dark, QColor(colors.separator))
+    palette.setColor(QPalette.ColorRole.Shadow, QColor(colors.border))
     for role in (
         QPalette.ColorRole.WindowText,
         QPalette.ColorRole.Text,
@@ -311,14 +314,16 @@ def _tabular(font: QFont) -> QFont:
 
 
 class _RowDelegate(QStyledItemDelegate):
-    """行级绘制：悬停时整行换底色，选中行左边缘画一条主色竖条。
+    """行级绘制：整行悬停底色、选中行左侧主色竖条、列与列之间的分隔线。
 
-    两件事都不能靠 QSS：
+    三件事都不能靠 QSS：
 
     - `QTableWidget::item:hover` 只把**鼠标所在的那一个单元格**染色，指针压在
       备注列上就只有备注列变灰，整行看起来断成两截；
     - 选中底色与日历里"这天有日程"的底色是同一个浅蓝，只靠底色分不清
-      "我选中了这条"与"这天有安排"。
+      "我选中了这条"与"这天有安排"；
+    - 列分隔线要贯穿表头与数据行。表头由 `QHeaderView::section` 画，数据行
+      由这里画：只画竖线、不恢复横网格，列表才不会退回电子表格。
 
     竖条画在**第一列可见列**上而不是固定第 0 列：单日视图里日期列是收起的，
     固定第 0 列会让这条线彻底消失。`first_column` 由表格提供。
@@ -328,12 +333,14 @@ class _RowDelegate(QStyledItemDelegate):
         self,
         accent: str,
         hover: str,
+        separator: str,
         first_column: Callable[[], int],
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._accent = QColor(accent)
         self._hover = QColor(hover)
+        self._separator = QColor(separator)
         self._hover_row: int | None = None
         self._first_column = first_column
 
@@ -344,10 +351,11 @@ class _RowDelegate(QStyledItemDelegate):
     def set_hover_row(self, row: int | None) -> None:
         self._hover_row = row
 
-    def set_colors(self, accent: str, hover: str) -> None:
+    def set_colors(self, accent: str, hover: str, separator: str) -> None:
         """主题切换时只换颜色，不重建 delegate。"""
         self._accent = QColor(accent)
         self._hover = QColor(hover)
+        self._separator = QColor(separator)
 
     def paint(
         self,
@@ -360,9 +368,22 @@ class _RowDelegate(QStyledItemDelegate):
         if index.row() == self._hover_row and not selected:
             painter.fillRect(option.rect, self._hover)
         super().paint(painter, option, index)
+
+        rect = option.rect
+        # 列分隔线：只画与下一列之间的那条竖线。上下各留 8px，
+        # 让它看起来是"列的分界"而不是把整行切成方格的网格线。
+        # 最后一列不画：表格右边缘不该再冒出一条线。
+        if index.column() != index.model().columnCount() - 1 and rect.height() > 16:
+            painter.fillRect(
+                rect.right(),
+                rect.top() + 8,
+                1,
+                rect.height() - 16,
+                self._separator,
+            )
+
         if not selected or index.column() != self._first_column():
             return
-        rect = option.rect
         painter.fillRect(
             rect.left(),
             rect.top() + 6,
@@ -423,8 +444,8 @@ class _EmptyState(QWidget):
         action_row.addStretch(1)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(8)
+        layout.setContentsMargins(32, 32, 32, 32)
+        layout.setSpacing(10)
         layout.addStretch(1)
         layout.addWidget(self._title)
         layout.addWidget(self._hint)
@@ -457,13 +478,14 @@ class MainWindow(QMainWindow):
     ) -> None:
         super().__init__()
         self.setWindowTitle(_WINDOW_TITLE)
-        self.resize(1040, 680)
-        self.setMinimumSize(900, 600)
+        self.resize(1080, 720)
+        self.setMinimumSize(960, 640)
 
         # 主题存在 QSettings 里：重启后保持上次的选择（第 6 节 V-21）。
         # 读取放在建控件之前，第一次 polish 就已经是目标主题，不会闪一下白底。
         self._settings = QSettings("SDMS", "SDMS")
         self._dark: bool = bool(self._settings.value(_DARK_SETTING, False, type=bool))
+        self._apply_application_font()
         self._apply_theme()
 
         self._calendar = CalendarPanel(today=clock)
@@ -477,6 +499,8 @@ class MainWindow(QMainWindow):
         self._sort_desc = False
         # 本次运行有没有出现过任何一行。为空时空状态要说的话取决于它。
         self._seen_rows = False
+        # 防止 `sectionResized` 的保护逻辑自己触发自己。
+        self._clamping_columns = False
         self._collator = QCollator(QLocale(QLocale.Language.Chinese, QLocale.Country.China))
         self._day_label = QLabel("", self)
         self._day_label.setObjectName("DayHeading")
@@ -514,7 +538,6 @@ class MainWindow(QMainWindow):
         self._build_row_menu_button()
         self._build_toolbar()
         self._connect_signals()
-
         # controller 放在 UI 建完之后创建：它需要把自己登记为 view，
         # 而写法的 `__init__` 走完后 `self` 才算可用。
         self._controller: ScheduleController = ScheduleController(
@@ -544,8 +567,9 @@ class MainWindow(QMainWindow):
         if isinstance(widths, (list, tuple)):
             for column, raw in enumerate(list(widths)[:3]):
                 width = _as_int(raw)
-                if width > 0:
-                    self._table.setColumnWidth(column, width)
+                # 旧版本可能存过 0 或三四十像素的列宽；恢复时同样要夹到下限，
+                # 否则一次"上次拖坏了"会让每次启动都丢表头。
+                self._set_column_width(column, max(_MIN_COLUMN_WIDTH, width))
 
         sort = self._settings.value(_SORT_SETTING)
         if isinstance(sort, str) and ":" in sort:
@@ -588,11 +612,15 @@ class MainWindow(QMainWindow):
         self._fill_notes_column()
 
     def _fill_notes_column(self) -> None:
-        """备注列吃掉视口的剩余宽度，**只增不减**。
+        """备注列吃掉视口的剩余宽度。
 
         四列都是 Interactive 之后表格不会自己撑满，不补这一步窗口拉宽时右边
-        会空出一条，看起来像列没加载出来。只增不减是为了不跟用户抢方向盘：
-        手动把备注拖窄之后，不该在下一次 resize 时被悄悄改回去。
+        会空出一条，看起来像列没加载出来。**只在两种情况下动手**：
+
+        - 视口变宽、备注列右边确实空着：把多出来的宽度补上（只增不减，
+          不跟用户手动拖窄抢方向盘）；
+        - 视口变窄、四列合计已经溢出：把备注列收到剩余宽度，避免窗口一缩小
+          就出现横向滚动条。收到 `_NOTES_COLUMN_MIN_WIDTH` 为止。
         """
         viewport = self._table.viewport()
         if viewport.width() <= 0:
@@ -602,9 +630,12 @@ class MainWindow(QMainWindow):
             for column in range(self._table.columnCount() - 1)
             if not self._table.isColumnHidden(column)
         )
+        current = self._table.columnWidth(3)
         target = max(_NOTES_COLUMN_MIN_WIDTH, viewport.width() - used)
-        if target > self._table.columnWidth(3) + 1:
-            self._table.setColumnWidth(3, target)
+        needs_grow = target > current + 1
+        needs_shrink = used + current > viewport.width() + 1 and target < current
+        if needs_grow or needs_shrink:
+            self._set_column_width(3, target)
 
     # ------------------------------------------------------------ 构建 UI
 
@@ -615,7 +646,7 @@ class MainWindow(QMainWindow):
         calendar_card.setObjectName("Card")
         calendar_layout = QVBoxLayout(calendar_card)
         calendar_layout.setContentsMargins(_CARD_MARGIN, _CARD_MARGIN, _CARD_MARGIN, _CARD_MARGIN)
-        calendar_layout.setSpacing(10)
+        calendar_layout.setSpacing(12)
         # 摘要不再塞进左卡片：日历拿到整张卡片的高度，日期行与徽标才有呼吸空间。
         calendar_layout.addWidget(self._calendar, 1)
 
@@ -623,7 +654,7 @@ class MainWindow(QMainWindow):
         right_card.setObjectName("Card")
         right_layout = QVBoxLayout(right_card)
         right_layout.setContentsMargins(_CARD_MARGIN, _CARD_MARGIN, _CARD_MARGIN, _CARD_MARGIN)
-        right_layout.setSpacing(10)
+        right_layout.setSpacing(12)
         title_row = QHBoxLayout()
         title_row.setSpacing(8)
         title_row.addWidget(self._day_label, 1)
@@ -657,13 +688,13 @@ class MainWindow(QMainWindow):
         splitter.addWidget(right_card)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([340, 660])
+        splitter.setSizes([350, 690])
         self._splitter = splitter
 
         outer = QWidget(self)
         outer_layout = QHBoxLayout(outer)
         outer_layout.setContentsMargins(_OUTER_MARGIN, _OUTER_MARGIN, _OUTER_MARGIN, _OUTER_MARGIN)
-        outer_layout.setSpacing(16)
+        outer_layout.setSpacing(20)
         outer_layout.addWidget(splitter)
         self.setCentralWidget(outer)
 
@@ -693,16 +724,18 @@ class MainWindow(QMainWindow):
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._table.setShowGrid(False)
-        # 斑马纹退掉：`#F9FAFB` 与白底的对比度只有 1.02，等于白配一条规则，
+        # 斑马纹退掉：`#F5F5F7` 与白底的对比度太低，等于白配一条规则，
         # 还会与"选中行"的浅蓝、行悬停的浅灰混成三种几乎一样的分组信号。
-        # 行与行改用 40px 行高留白区分，加上悬停底色就够定位了。
+        # 行与行改用 44px 行高留白区分，加上悬停底色就够定位了。
         self._table.setAlternatingRowColors(False)
         self._table.setWordWrap(False)
         self._table.verticalHeader().setVisible(False)
         self._table.verticalHeader().setDefaultSectionSize(_ROW_HEIGHT)
+        colors = theme.palette(self._dark)
         self._row_delegate = _RowDelegate(
-            theme.palette(self._dark).primary,
-            theme.palette(self._dark).row_hover,
+            colors.primary,
+            colors.row_hover,
+            colors.separator,
             self._first_visible_column,
             self._table,
         )
@@ -718,15 +751,44 @@ class MainWindow(QMainWindow):
         header = self._table.horizontalHeader()
         header.setFixedHeight(_HEADER_HEIGHT)
         header.setStretchLastSection(False)
+        # 最小段宽：Qt 会把拖拽与 `setColumnWidth` 的落点夹到这个值以上，
+        # 表头文字才不会被挤没。注意 Qt 对 `setColumnWidth(col, 0)` 有特例，
+        # 这条下限仍可能被绕过，`_on_section_resized()` 再兜一层。
+        header.setMinimumSectionSize(_MIN_COLUMN_WIDTH)
         # 四列全部 Interactive：只有 Interactive 的段才响应"双击分隔线自适应内容"，
         # 备注列以前是 Stretch，双击一直没反应。宽度仍会被记住，窗口拉宽时由
         # `_fill_notes_column()` 把多出来的空间补到备注列上，避免右侧留一片空白。
         for column in range(len(_COLUMN_HEADERS)):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.Interactive)
-        self._table.setColumnWidth(0, _DATE_COLUMN_WIDTH)
-        self._table.setColumnWidth(1, _TIME_COLUMN_WIDTH)
-        self._table.setColumnWidth(2, _TITLE_COLUMN_WIDTH)
-        self._table.setColumnWidth(3, _NOTES_COLUMN_WIDTH)
+        self._set_column_width(0, _DATE_COLUMN_WIDTH)
+        self._set_column_width(1, _TIME_COLUMN_WIDTH)
+        self._set_column_width(2, _TITLE_COLUMN_WIDTH)
+        self._set_column_width(3, _NOTES_COLUMN_WIDTH)
+        # 用户拖到比下限更窄时把它拉回来。放在设完初始宽度之后接线，
+        # 初始化过程本身不会触发一轮无意义的回调。
+        header.sectionResized.connect(self._on_section_resized)
+
+    def _set_column_width(self, column: int, width: int) -> None:
+        """设置列宽并夹到最小宽度；所有写列宽的地方都走这里。"""
+        self._table.setColumnWidth(column, max(_MIN_COLUMN_WIDTH, width))
+
+    def _on_section_resized(self, column: int, old_size: int, new_size: int) -> None:
+        """防住 Qt 的 0 宽特例：`setColumnWidth(col, 0)` 不会被 minimumSectionSize 夹住。
+
+        拖到列宽归零之后，表头文字与拖拽把手一起消失，用户没有办法再拖回来；
+        这里把 0（以及任何小于下限的值）设回下限。`_clamping_columns` 防止
+        `setColumnWidth()` 再次发出 `sectionResized` 形成递归。
+        """
+        if new_size >= _MIN_COLUMN_WIDTH or self._clamping_columns:
+            return
+        # 收起日期列时 Qt 可能把 section 的尺寸报成 0；隐藏列不该被"救回来"。
+        if self._table.isColumnHidden(column):
+            return
+        self._clamping_columns = True
+        try:
+            self._table.setColumnWidth(column, _MIN_COLUMN_WIDTH)
+        finally:
+            self._clamping_columns = False
 
     def _build_row_menu_button(self) -> None:
         """行内操作入口：鼠标停在哪一行，右上角就浮出一个「⋯」。
@@ -897,6 +959,9 @@ class MainWindow(QMainWindow):
             self._table.blockSignals(False)
         self._clear_hover()
         self._sync_date_column(bool(self._controller.search_text))
+        # 日期列的显隐会改变可用宽度：搜索态多了 104px 日期列，备注列必须跟着收，
+        # 否则表格会平白多出一条横向滚动条。
+        self._fill_notes_column()
         self._update_empty_state(bool(rows))
         # 重绘后按钮可用性必须跟着选中态走，否则会出现"行没了、按钮还亮着"。
         self._apply_selection_state()
@@ -955,8 +1020,17 @@ class MainWindow(QMainWindow):
         """单日视图里每行日期都一样，日期列是纯重复，收起来把宽度让给标题。
 
         搜索会跨日期命中，"这条在哪天"只能靠日期列回答，所以搜索态必须显示。
+
+        收起/展开时屏蔽表头信号：Qt 隐藏一个 section 会发出 `sectionResized(..., 0)`，
+        那正好落进 `_on_section_resized()` 的"防 0 宽"分支；若在隐藏过程中把宽度
+        设回 88，隐藏列会继续占着 88px，表格左侧凭空多出一条空白。
         """
-        self._table.setColumnHidden(0, not searching)
+        header = self._table.horizontalHeader()
+        blocked = header.blockSignals(True)
+        try:
+            self._table.setColumnHidden(0, not searching)
+        finally:
+            header.blockSignals(blocked)
 
     def _update_summary(self) -> None:
         """状态栏右侧常驻：这一屏数据是什么时候取回来的。
@@ -1178,6 +1252,21 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------ 内部
 
+    def _apply_application_font(self) -> None:
+        """把主题字体栈装到应用上：SF Pro → Segoe UI → 微软雅黑。
+
+        不用 QSS 的 `font-family`：Qt 对逗号分隔的字族列表解析不可靠，一旦
+        第一个字族不存在，整条声明会被丢掉。`QFont.setFamilies()` 会按顺序
+        找第一个已安装的字族，这才是真正可移植的回退链。
+        """
+        app = QApplication.instance()
+        if not isinstance(app, QApplication):
+            return
+        font = QFont()
+        font.setFamilies(list(theme.FONT_FAMILIES))
+        font.setPixelSize(theme.FONT_PIXEL_SIZE)
+        app.setFont(font)
+
     def _apply_theme(self) -> None:
         """把当前主题的 QSS 与调色板套到整个应用；窗口、表单、消息框一起生效。"""
         colors = theme.palette(self._dark)
@@ -1186,9 +1275,9 @@ class MainWindow(QMainWindow):
             app.setPalette(_application_palette(colors))
             app.setStyleSheet(theme.stylesheet(self._dark))
         # 下面两样是"画出来的颜色"，QSS 管不到，主题切换时必须手动跟着换：
-        # 整行悬停底色与选中竖条来自 delegate 的画笔，搜索框的 ✕ 是一张位图。
+        # 整行悬停底色、列分隔线与选中竖条来自 delegate 的画笔，搜索框的 ✕ 是一张位图。
         if hasattr(self, "_row_delegate"):
-            self._row_delegate.set_colors(colors.primary, colors.row_hover)
+            self._row_delegate.set_colors(colors.primary, colors.row_hover, colors.separator)
         if hasattr(self, "_clear_search_action"):
             self._clear_search_action.setIcon(_clear_icon(colors.muted))
 
