@@ -247,7 +247,7 @@ uv run pytest
 uv run pytest --cov=src --cov-report=term-missing
 ```
 
-当前测试总数 **431**，`mypy src tests` 检查 **49** 个源文件，`ruff format --check` 检查 **74** 个文件。测试命令在两个平台上完全一致。
+当前测试总数 **446**，`mypy src tests` 检查 **50** 个源文件，`ruff format --check` 检查 **76** 个文件。测试命令在两个平台上完全一致。
 
 ### 环境门禁
 
@@ -267,7 +267,7 @@ uv run pytest --cov=src --cov-report=term-missing
 
 ### 业务测试
 
-- 界面层：`test_controller.py`、`test_presenters.py`、`test_ui_layering.py`、`test_theme.py`、`test_dev_stub_service.py`、`test_app_demo_service.py`；窗口控件接线由 `tests/integration/test_main_window_search.py` 覆盖；
+- 界面层：`test_controller.py`、`test_presenters.py`、`test_ui_layering.py`、`test_theme.py`、`test_dev_stub_service.py`、`test_app_demo_service.py`；窗口控件接线由 `tests/integration/test_main_window_search.py` 覆盖，列宽下限与分隔线像素由 `tests/integration/test_main_window_columns.py` 覆盖；
 - 存储/服务层：`tests/unit/test_schedule.py`、`tests/unit/test_service.py`、`tests/unit/test_parsing.py`、`tests/contract/`、`tests/integration/`；
 - 入口装配：`tests/integration/test_app_entrypoint.py` 验证默认入口打开 SQLite、开箱为空且连接被关闭。
 
@@ -287,12 +287,12 @@ uv run pytest --cov=src --cov-report=term-missing
 | 依赖同步 | `uv sync --frozen --dev` | 通过 |
 | 锁文件一致性 | `uv lock --check` | 通过 |
 | 代码规范 | `uv run ruff check .` | `All checks passed!` |
-| 代码格式 | `uv run ruff format --check .` | `72 files already formatted` |
+| 代码格式 | `uv run ruff format --check .` | `76 files already formatted` |
 | 字节码编译 | `uv run python -m compileall -q src tests` | 通过 |
 | 项目包导入 | `uv run python -c "import schedule_management as m; print(m.__file__)"` | 指向 `src/schedule_management/__init__.py` |
 | PySide6 可用性 | `uv run python -c "import PySide6; print(PySide6.__version__)"` | 6.12.0（Qt 6.12.0） |
-| 自动化测试 | `uv run pytest -q` | `431 passed` |
-| 类型检查 | `uv run mypy src tests` | `Success: no issues found in 47 source files` |
+| 自动化测试 | `uv run pytest -q` | `446 passed` |
+| 类型检查 | `uv run mypy src tests` | `Success: no issues found in 50 source files` |
 | 入口冒烟 | `app.main(..., db_path=临时库)` offscreen | 窗口 2 行、退出码 0、关连接重开数据仍在 |
 
 说明：
